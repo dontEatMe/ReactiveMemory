@@ -80,6 +80,7 @@ void printSomeStruct() {
 
 int main() {
 	printf("reactive memory app\n");
+
 	PVOID exHandler = AddVectoredExceptionHandler( 1, imExeption );
 
 	reactiveMem = reactiveAlloc(sizeof(someStruct));
@@ -97,9 +98,9 @@ int main() {
 
 	printSomeStruct(); // prinf in function for drop reactive-fails compiler optimization on Release build
 
-    RemoveVectoredExceptionHandler(exHandler);
-
 	reactiveFree(reactiveMem);
+
+	RemoveVectoredExceptionHandler(exHandler);
 
 	getchar();
 }
