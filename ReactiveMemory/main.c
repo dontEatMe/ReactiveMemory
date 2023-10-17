@@ -19,31 +19,35 @@ typedef struct someStruct {
 
 typedef struct mmBlock {
 	void* imPointer;
-	void* rePointer;
 	size_t size;
 } mmBlock;
 
 mmBlock* reactiveMem;
 
 LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
+	DWORD oldProtect;
 	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
 		// lazy calculation, only on read
 		if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0) { // read
 			size_t offset = ExceptionInfo->ExceptionRecord->ExceptionInformation[1] - (size_t)reactiveMem->imPointer;
-			field* realAddr = (size_t)reactiveMem->rePointer + offset;
-			if (realAddr->isComputed) {
-				realAddr->callback(reactiveMem->imPointer);
+			field* realAddr = (size_t)reactiveMem->imPointer + offset;
+			// fix rights for save data
+			VirtualProtect(reactiveMem->imPointer, reactiveMem->size, PAGE_READWRITE, &oldProtect);
+			// save data
+			BOOL isComputed = realAddr->isComputed;
+			void (*callback)(void* imPointer) = realAddr->callback;
+			// lock again
+			VirtualProtect(reactiveMem->imPointer, reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+			if (isComputed) {
+				callback(reactiveMem->imPointer);
 			}
 		}
-		// fix rights
-		VirtualAlloc(reactiveMem->imPointer, reactiveMem->size, MEM_COMMIT, PAGE_READWRITE);
-		memcpy(reactiveMem->imPointer, reactiveMem->rePointer, reactiveMem->size);
+		VirtualProtect(reactiveMem->imPointer, reactiveMem->size, PAGE_READWRITE, &oldProtect);
 		ExceptionInfo->ContextRecord->EFlags |= 0x00000100; // trap flag for get exception after memory access instruction
 		//printf("EXCEPTION_ACCESS_VIOLATION\n");
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
-		memcpy(reactiveMem->rePointer, reactiveMem->imPointer, reactiveMem->size);
-		VirtualFree(reactiveMem->imPointer, reactiveMem->size, MEM_DECOMMIT);
+		VirtualProtect(reactiveMem->imPointer, reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 		//printf("EXCEPTION_SINGLE_STEP\n");
 	}
 	return EXCEPTION_CONTINUE_EXECUTION;
@@ -51,15 +55,13 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 
 mmBlock* reactiveAlloc(size_t memSize) {
 	mmBlock* block = malloc(sizeof(mmBlock));
-	block->imPointer = VirtualAlloc(NULL, memSize, MEM_RESERVE, PAGE_READWRITE); // imaginary pages
-	block->rePointer = VirtualAlloc(NULL, memSize, MEM_COMMIT, PAGE_READWRITE);// real pages
+	block->imPointer = VirtualAlloc(NULL, memSize, MEM_COMMIT, PAGE_NOACCESS); // imaginary pages
 	block->size = memSize;
 	return block;
 }
 
 void reactiveFree(mmBlock* memBlock) {
-	VirtualFree(memBlock->imPointer, 0, MEM_RELEASE);	
-	VirtualFree(memBlock->rePointer, 0, MEM_RELEASE);
+	VirtualFree(memBlock->imPointer, 0, MEM_RELEASE);
 	free(memBlock);
 }
 
