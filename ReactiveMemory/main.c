@@ -41,8 +41,8 @@ typedef struct field {
 	BOOL isComputed;
 	uint32_t (*callback)(void* imPointer); // pointer to compute callback
 	struct { // variables on which this observer depends
-		struct observerEntry* tail;
-		struct observerEntry* head;
+		observerEntry* tail;
+		observerEntry* head;
 	} observers;
 	struct field* next; // TODO double-linked list
 } field;
@@ -51,8 +51,8 @@ typedef struct observer {
 	field* pointer; // variable to observe
 	void (*triggerCallback)(uint32_t* value, void* imPointer); // pointer to trigger callback
 	struct { // variables on which this observer depends
-		struct varEntry* tail;
-		struct varEntry* head;
+		varEntry* tail;
+		varEntry* head;
 	} depends;
 	struct observer* next; // TODO double-linked list
 } observer;
@@ -69,12 +69,12 @@ typedef struct engineState {
 	PVOID exHandler;
 	REACTIVITY_MODE mode;
 	struct {
-		struct observer* tail;
-		struct observer* head;
+		observer* tail;
+		observer* head;
 	} observers;
 	struct {
-		struct field* tail;
-		struct field* head;
+		field* tail;
+		field* head;
 	} variables;
 } engineState;
 
@@ -124,12 +124,8 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
 		field* realAddr = getVariable((void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		if (realAddr!=NULL) {
-			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-			BOOL isComputed = realAddr->isComputed;
-			uint32_t (*computedCallback)(void* imPointer) = realAddr->callback;
-			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 			if (state.registerObserver != NULL) {
-				if (isComputed == FALSE) {
+				if (realAddr->isComputed == FALSE) {
 					varEntry* entry = malloc(sizeof(varEntry)); // TODO check to malloc return NULL
 					entry->variable = realAddr;
 					entry->next = NULL;
@@ -144,8 +140,8 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 			} else {
 				// lazy calculation, only on read
 				if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0) { // read
-					if (isComputed) {
-						uint32_t value = computedCallback(state.reactiveMem->imPointer);
+					if (realAddr->isComputed) {
+						uint32_t value = realAddr->callback(state.reactiveMem->imPointer);
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 						*realAddr->value = value;
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
@@ -161,9 +157,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
 		if (state.changedField!=NULL) {
-			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 			observerEntry* obsEntry = state.changedField->observers.head;
-			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 			state.changedField = NULL;
 			while (obsEntry!=NULL) {
 				// TODO pass old value and new value
@@ -171,9 +165,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				obsEntry = obsEntry->next;
 			}
 		}
-		else {
-			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
-		}
+		VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 		//printf("EXCEPTION_SINGLE_STEP\n");
 	}
 	return EXCEPTION_CONTINUE_EXECUTION;
@@ -240,7 +232,6 @@ void watch(uint32_t* pointer, void (*triggerCallback)(uint32_t* value, void* imP
 		state.observers.tail = obs;
 	}
 	state.registerObserver = obs;
-	DWORD oldProtect;
 	uint32_t (*computedCallback)(void* imPointer) = variable->callback;
 	BOOL isComputed = variable->isComputed;
 	if (isComputed) {
@@ -333,8 +324,7 @@ uint32_t computedField3(someStruct* someStruct) {
 	return someStruct->field2 + someStruct->field1;
 }
 
-void triggerCallback(uint32_t* variable, void* imPointer) {
-	someStruct* someStruct = imPointer;
+void triggerCallback(uint32_t* variable, someStruct* someStruct) {
 	printf("[trigger] watch value: %d, field1 value: %d\n", *variable, someStruct->field1);
 }
 
