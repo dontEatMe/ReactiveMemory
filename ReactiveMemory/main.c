@@ -49,7 +49,7 @@ typedef struct field {
 } field;
 
 typedef struct observer {
-	field* pointer; // variable to observe
+	field* variable; // variable to observe
 	void (*triggerCallback)(void* value, void* imPointer); // pointer to trigger callback
 	struct { // variables on which this observer depends
 		varEntry* tail;
@@ -165,16 +165,23 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 		}
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
+		VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 		if (state.changedField!=NULL) {
 			observerEntry* obsEntry = state.changedField->observers.head;
 			state.changedField = NULL;
 			while (obsEntry!=NULL) {
 				// TODO pass old value and new value
-				obsEntry->observer->triggerCallback(obsEntry->observer->pointer->value, state.reactiveMem->imPointer);
+				// TODO do not call computed callback here in NONLAZY_MODE
+				if (obsEntry->observer->variable->isComputed) {
+					uint32_t value = obsEntry->observer->variable->callback(state.reactiveMem->imPointer);
+					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+					*(uint32_t*)obsEntry->observer->variable->value = value;
+					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+				}
+				obsEntry->observer->triggerCallback(obsEntry->observer->variable->value, state.reactiveMem->imPointer);
 				obsEntry = obsEntry->next;
 			}
 		}
-		VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 		//printf("EXCEPTION_SINGLE_STEP\n");
 	}
 	return EXCEPTION_CONTINUE_EXECUTION;
@@ -232,7 +239,7 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer))
 	observer* obs = malloc(sizeof(observer));
 	obs->depends.head = NULL;
 	obs->depends.tail = NULL;
-	obs->pointer = variable;
+	obs->variable = variable;
 	obs->triggerCallback = triggerCallback;
 	obs->next = NULL;
 	if (state.observers.head == NULL) {
@@ -335,8 +342,11 @@ uint32_t computedField3(someStruct* someStruct) {
 	return someStruct->field2 + someStruct->field1;
 }
 
-void triggerCallback(someSubStruct* variable, someStruct* someStruct) {
-	printf("[trigger] watch value (field4.field3): %u, field1 value: %u\n", variable->field3, someStruct->field1);
+void triggerCallback1(uint32_t* variable, someStruct* someStruct) {
+	printf("[trigger1] watch value (field3): %u, field3 value: %u, field1 value: %u\n", *variable, someStruct->field3, someStruct->field1);
+}
+void triggerCallback2(someSubStruct* variable, someStruct* someStruct) {
+	printf("[trigger2] watch value (field4.field3): %u, field1 value: %u\n", variable->field3, someStruct->field1);
 }
 
 int main() {
@@ -353,13 +363,12 @@ int main() {
 	someStruct->field1 = 0;
 	
 	printf("field1: %u, field2: %u, field3: %u\n", someStruct->field1, someStruct->field2, someStruct->field3);
-
-	watch(&someStruct->field4, triggerCallback);
+	
+	watch(&someStruct->field3, triggerCallback1);
+	watch(&someStruct->field4, triggerCallback2);
 
 	someStruct->field1 = 77;
 	someStruct->field1 = 79;
-	DWORD oldProtect;
-	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 	someStruct->field4.field3 = 5;
 	
 	printf("field1: %u, field2: %u, field3: %u\n", someStruct->field1, someStruct->field2, someStruct->field3);
