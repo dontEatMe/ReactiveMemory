@@ -36,11 +36,12 @@ typedef struct observerEntry {
 } observerEntry;
 
 typedef struct field {
-	uint32_t* value;
-	uint32_t oldValue;
+	void* value;
+	size_t size;
+	//uint32_t oldValue;
 	BOOL isComputed;
 	uint32_t (*callback)(void* imPointer); // pointer to compute callback
-	struct { // variables on which this observer depends
+	struct {
 		observerEntry* tail;
 		observerEntry* head;
 	} observers;
@@ -49,7 +50,7 @@ typedef struct field {
 
 typedef struct observer {
 	field* pointer; // variable to observe
-	void (*triggerCallback)(uint32_t* value, void* imPointer); // pointer to trigger callback
+	void (*triggerCallback)(void* value, void* imPointer); // pointer to trigger callback
 	struct { // variables on which this observer depends
 		varEntry* tail;
 		varEntry* head;
@@ -80,10 +81,17 @@ typedef struct engineState {
 
 // user structures
 
+typedef struct someSubStruct {
+	uint32_t field1;
+	uint32_t field2;
+	uint32_t field3;
+} someSubStruct;
+
 typedef struct someStruct {
 	uint32_t field1;
 	uint32_t field2;
 	uint32_t field3;
+	someSubStruct field4;
 } someStruct;
 
 // engine data
@@ -110,7 +118,8 @@ field* getVariable(void* pointer) {
 	field* result = NULL;
 	field* fieldToTest = state.variables.head;
 	while(fieldToTest!=NULL) {
-		if (fieldToTest->value == pointer) {
+		// strict inequality in second case for last byte
+		if (((size_t)fieldToTest->value <= (size_t)pointer) && ((size_t)pointer < (size_t)fieldToTest->value+fieldToTest->size)) {
 			result = fieldToTest;
 			break;
 		}
@@ -143,7 +152,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 					if (realAddr->isComputed) {
 						uint32_t value = realAddr->callback(state.reactiveMem->imPointer);
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-						*realAddr->value = value;
+						*(uint32_t*)realAddr->value = value;
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 					}
 				} else if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // write
@@ -171,7 +180,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	return EXCEPTION_CONTINUE_EXECUTION;
 }
 
-void ref(uint32_t* pointer) {
+void ref(void* pointer, size_t size) {
 	DWORD oldProtect;
 	field* variable = malloc(sizeof(field));
 	variable->isComputed = FALSE;
@@ -179,10 +188,11 @@ void ref(uint32_t* pointer) {
 	variable->observers.head = NULL;
 	variable->observers.tail = NULL;
 	variable->next = NULL;
-	VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-	variable->oldValue = *pointer;
-	VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+	//variable->oldValue = *pointer;
+	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 	variable->value = pointer;
+	variable->size = size;
 	if (state.variables.head == NULL) {
 		state.variables.head = variable;
 		state.variables.tail = variable;
@@ -192,7 +202,7 @@ void ref(uint32_t* pointer) {
 	}
 }
 
-void computed(uint32_t* pointer, uint32_t (*callback)(void* imPointer)) {
+void computed(void* pointer, size_t size, uint32_t (*callback)(void* imPointer)) {
 	DWORD oldProtect;
 	field* variable = malloc(sizeof(field));
 	variable->isComputed = TRUE;
@@ -200,10 +210,11 @@ void computed(uint32_t* pointer, uint32_t (*callback)(void* imPointer)) {
 	variable->observers.head = NULL;
 	variable->observers.tail = NULL;
 	variable->next = NULL;
-	VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-	variable->oldValue = *pointer;
-	VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+	//variable->oldValue = *pointer;
+	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 	variable->value = pointer;
+	variable->size = size;
 	if (state.variables.head == NULL) {
 		state.variables.head = variable;
 		state.variables.tail = variable;
@@ -213,7 +224,7 @@ void computed(uint32_t* pointer, uint32_t (*callback)(void* imPointer)) {
 	}
 }
 
-void watch(uint32_t* pointer, void (*triggerCallback)(uint32_t* value, void* imPointer)) {
+void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer)) {
 	// for register watch() callback
 	// 1. get list of static variables on which observer variable depends (by call watch callback)
 	// 2. add watch callback to observers list of this variables
@@ -237,7 +248,7 @@ void watch(uint32_t* pointer, void (*triggerCallback)(uint32_t* value, void* imP
 	if (isComputed) {
 		computedCallback(state.reactiveMem->imPointer);
 	} else {
-		uint32_t buf = *variable->value;
+		char buf = *(char*)variable->value; // read byte for #PF and enum observer depends in #PF handler routine
 	}
 	varEntry* entry = obs->depends.head;
 	while (entry!=NULL) {
@@ -258,7 +269,7 @@ void watch(uint32_t* pointer, void (*triggerCallback)(uint32_t* value, void* imP
 
 void* reactiveAlloc(size_t memSize) {
 	mmBlock* block = malloc(sizeof(mmBlock));
-	block->imPointer = VirtualAlloc(NULL, memSize, MEM_COMMIT, PAGE_NOACCESS); // imaginary pages
+	block->imPointer = VirtualAlloc(NULL, memSize, MEM_COMMIT|MEM_RESERVE, PAGE_NOACCESS); // imaginary pages
 	block->size = memSize;
 	state.reactiveMem = block;
 	return block->imPointer;
@@ -324,8 +335,8 @@ uint32_t computedField3(someStruct* someStruct) {
 	return someStruct->field2 + someStruct->field1;
 }
 
-void triggerCallback(uint32_t* variable, someStruct* someStruct) {
-	printf("[trigger] watch value: %d, field1 value: %d\n", *variable, someStruct->field1);
+void triggerCallback(someSubStruct* variable, someStruct* someStruct) {
+	printf("[trigger] watch value (field4.field3): %u, field1 value: %u\n", variable->field3, someStruct->field1);
 }
 
 int main() {
@@ -334,20 +345,24 @@ int main() {
 	initReactivity(MODE_NONLAZY);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 
-	ref(&someStruct->field1);
-	computed(&someStruct->field2, computedField2);
-	computed(&someStruct->field3, computedField3);
+	ref(&someStruct->field1, sizeof(someStruct->field1));
+	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
+	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3);
+	ref(&someStruct->field4, sizeof(someStruct->field4));
 
 	someStruct->field1 = 0;
 	
-	printf("field1: %d, field2: %d, field3: %d\n", someStruct->field1, someStruct->field2, someStruct->field3);
+	printf("field1: %u, field2: %u, field3: %u\n", someStruct->field1, someStruct->field2, someStruct->field3);
 
-	watch(&someStruct->field3, triggerCallback);
+	watch(&someStruct->field4, triggerCallback);
 
 	someStruct->field1 = 77;
 	someStruct->field1 = 79;
+	DWORD oldProtect;
+	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+	someStruct->field4.field3 = 5;
 	
-	printf("field1: %d, field2: %d, field3: %d\n", someStruct->field1, someStruct->field2, someStruct->field3);
+	printf("field1: %u, field2: %u, field3: %u\n", someStruct->field1, someStruct->field2, someStruct->field3);
 
 	reactiveFree(someStruct);
 	freeReactivity();
