@@ -40,7 +40,7 @@ typedef struct field {
 	size_t size;
 	//uint32_t oldValue;
 	BOOL isComputed;
-	uint32_t (*callback)(void* imPointer); // pointer to compute callback
+	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
 	struct {
 		observerEntry* tail;
 		observerEntry* head;
@@ -150,10 +150,12 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				// lazy calculation, only on read
 				if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0) { // read
 					if (realAddr->isComputed) {
-						uint32_t value = realAddr->callback(state.reactiveMem->imPointer);
+						void* value = malloc(realAddr->size);
+						realAddr->callback(value, state.reactiveMem->imPointer);
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-						*(uint32_t*)realAddr->value = value;
+						memcpy(realAddr->value, value, realAddr->size);
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+						free(value);
 					}
 				} else if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // write
 					state.changedField = realAddr;
@@ -173,10 +175,12 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				// TODO pass old value and new value
 				// TODO do not call computed callback here in NONLAZY_MODE
 				if (obsEntry->observer->variable->isComputed) {
-					uint32_t value = obsEntry->observer->variable->callback(state.reactiveMem->imPointer);
+					void* value = malloc(obsEntry->observer->variable->size);
+					obsEntry->observer->variable->callback(value, state.reactiveMem->imPointer);
 					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-					*(uint32_t*)obsEntry->observer->variable->value = value;
+					memcpy(obsEntry->observer->variable->value, value, obsEntry->observer->variable->size);
 					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+					free(value);
 				}
 				obsEntry->observer->triggerCallback(obsEntry->observer->variable->value, state.reactiveMem->imPointer);
 				obsEntry = obsEntry->next;
@@ -253,7 +257,9 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer))
 	uint32_t (*computedCallback)(void* imPointer) = variable->callback;
 	BOOL isComputed = variable->isComputed;
 	if (isComputed) {
-		computedCallback(state.reactiveMem->imPointer);
+		void* value = malloc(variable->size);
+		computedCallback(value, state.reactiveMem->imPointer); // call computed callback for #PF and enum observer depends in #PF handler routine
+		free(value);
 	} else {
 		char buf = *(char*)variable->value; // read byte for #PF and enum observer depends in #PF handler routine
 	}
@@ -334,12 +340,12 @@ void freeReactivity() {
 
 // user functions
 
-uint32_t computedField2(someStruct* someStruct) {
-	return someStruct->field1 + 2;
+void computedField2(uint32_t* bufForReturnValue, someStruct* someStruct) {
+	*bufForReturnValue = someStruct->field1 + 2;
 }
 
-uint32_t computedField3(someStruct* someStruct) {
-	return someStruct->field2 + someStruct->field1;
+void computedField3(uint32_t* bufForReturnValue, someStruct* someStruct) {
+	*bufForReturnValue = someStruct->field2 + someStruct->field1;
 }
 
 void triggerCallback1(uint32_t* variable, someStruct* someStruct) {
