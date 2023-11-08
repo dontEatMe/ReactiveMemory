@@ -87,9 +87,15 @@ typedef struct someSubStruct {
 	uint32_t field3;
 } someSubStruct;
 
-typedef struct someStruct {
+typedef struct someComputedSubStruct {
 	uint32_t field1;
 	uint32_t field2;
+	uint32_t field3;
+} someComputedSubStruct;
+
+typedef struct someStruct {
+	uint32_t field1;
+	someComputedSubStruct field2;
 	uint32_t field3;
 	someSubStruct field4;
 } someStruct;
@@ -340,12 +346,14 @@ void freeReactivity() {
 
 // user functions
 
-void computedField2(uint32_t* bufForReturnValue, someStruct* someStruct) {
-	*bufForReturnValue = someStruct->field1 + 2;
+void computedField2(someComputedSubStruct* bufForReturnValue, someStruct* someStruct) {
+	bufForReturnValue->field1 = 1;
+	bufForReturnValue->field2 = someStruct->field1 + 2;
+	bufForReturnValue->field3 = 3;
 }
 
 void computedField3(uint32_t* bufForReturnValue, someStruct* someStruct) {
-	*bufForReturnValue = someStruct->field2 + someStruct->field1;
+	*bufForReturnValue = someStruct->field2.field2 + someStruct->field1;
 }
 
 void triggerCallback1(uint32_t* variable, someStruct* someStruct) {
@@ -368,7 +376,7 @@ int main() {
 
 	someStruct->field1 = 0;
 	
-	printf("field1: %u, field2: %u, field3: %u\n", someStruct->field1, someStruct->field2, someStruct->field3);
+	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
 	
 	watch(&someStruct->field3, triggerCallback1);
 	watch(&someStruct->field4, triggerCallback2);
@@ -377,7 +385,7 @@ int main() {
 	someStruct->field1 = 79;
 	someStruct->field4.field3 = 5;
 	
-	printf("field1: %u, field2: %u, field3: %u\n", someStruct->field1, someStruct->field2, someStruct->field3);
+	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
 
 	reactiveFree(someStruct);
 	freeReactivity();
