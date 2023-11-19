@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <windows.h>
 
@@ -20,40 +21,35 @@ typedef enum REACTIVITY_MODE {
 //  2. on every change static variable value check dependent of this variable computed variables and recalculate it
 //  3. callbacks of the computed variables must not be manually changed
 
-typedef struct list {
-	struct varEntry* tail;
-	struct varEntry* head;
-} list;
-
-typedef struct varEntry {
-	struct field* variable;
-	struct varEntry* next;
-} varEntry;
+typedef struct variableEntry {
+	struct variable* variable;
+	struct variableEntry* next;
+} variableEntry;
 
 typedef struct observerEntry {
 	struct observer* observer;
 	struct observerEntry* next;
 } observerEntry;
 
-typedef struct field {
+typedef struct variable {
 	void* value;
 	size_t size;
 	//uint32_t oldValue;
-	BOOL isComputed;
+	bool isComputed;
 	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
 	struct {
 		observerEntry* tail;
 		observerEntry* head;
 	} observers;
-	struct field* next; // TODO double-linked list
-} field;
+	struct variable* next; // TODO double-linked list
+} variable;
 
 typedef struct observer {
-	field* variable; // variable to observe
+	variable* variable; // variable to observe
 	void (*triggerCallback)(void* value, void* imPointer); // pointer to trigger callback
 	struct { // variables on which this observer depends
-		varEntry* tail;
-		varEntry* head;
+		variableEntry* tail;
+		variableEntry* head;
 	} depends;
 	struct observer* next; // TODO double-linked list
 } observer;
@@ -65,7 +61,7 @@ typedef struct mmBlock {
 
 typedef struct engineState {
 	observer* registerObserver;
-	field* changedField;
+	variable* changedVariable;
 	mmBlock* reactiveMem;
 	PVOID exHandler;
 	REACTIVITY_MODE mode;
@@ -74,8 +70,8 @@ typedef struct engineState {
 		observer* head;
 	} observers;
 	struct {
-		field* tail;
-		field* head;
+		variable* tail;
+		variable* head;
 	} variables;
 } engineState;
 
@@ -104,7 +100,7 @@ typedef struct someStruct {
 
 engineState state = {
 	.registerObserver = NULL, // TODO mutex
-	.changedField = NULL,
+	.changedVariable = NULL,
 	.reactiveMem = NULL,
 	.exHandler = NULL,
 	.mode = MODE_LAZY,
@@ -120,28 +116,30 @@ engineState state = {
 
 // engine functions
 
-field* getVariable(void* pointer) {
-	field* result = NULL;
-	field* fieldToTest = state.variables.head;
-	while(fieldToTest!=NULL) {
+variable* getVariable(void* pointer) {
+	variable* result = NULL;
+	variable* variableToTest = state.variables.head;
+	while(variableToTest!=NULL) {
 		// strict inequality in second case for last byte
-		if (((size_t)fieldToTest->value <= (size_t)pointer) && ((size_t)pointer < (size_t)fieldToTest->value+fieldToTest->size)) {
-			result = fieldToTest;
+		if (((size_t)variableToTest->value <= (size_t)pointer) && ((size_t)pointer < (size_t)variableToTest->value+variableToTest->size)) {
+			result = variableToTest;
 			break;
 		}
-		fieldToTest = fieldToTest->next;
+		variableToTest = variableToTest->next;
 	}
 	return result;
 }
 
+// if we run in kernel mode we can isolate reactive memory to kernel space to prevent write to it from user mode process
+
 LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	DWORD oldProtect;
 	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
-		field* realAddr = getVariable((void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+		variable* realAddr = getVariable((void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		if (realAddr!=NULL) {
 			if (state.registerObserver != NULL) {
-				if (realAddr->isComputed == FALSE) {
-					varEntry* entry = malloc(sizeof(varEntry)); // TODO check to malloc return NULL
+				if (!realAddr->isComputed) {
+					variableEntry* entry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
 					entry->variable = realAddr;
 					entry->next = NULL;
 					if (state.registerObserver->depends.head == NULL) {
@@ -164,7 +162,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 						free(value);
 					}
 				} else if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // write
-					state.changedField = realAddr;
+					state.changedVariable = realAddr;
 				}
 			}
 			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
@@ -174,9 +172,9 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
 		VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
-		if (state.changedField!=NULL) {
-			observerEntry* obsEntry = state.changedField->observers.head;
-			state.changedField = NULL;
+		if (state.changedVariable!=NULL) {
+			observerEntry* obsEntry = state.changedVariable->observers.head;
+			state.changedVariable = NULL;
 			while (obsEntry!=NULL) {
 				// TODO pass old value and new value
 				// TODO do not call computed callback here in NONLAZY_MODE
@@ -199,45 +197,45 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 
 void ref(void* pointer, size_t size) {
 	DWORD oldProtect;
-	field* variable = malloc(sizeof(field));
-	variable->isComputed = FALSE;
-	variable->callback = NULL;
-	variable->observers.head = NULL;
-	variable->observers.tail = NULL;
-	variable->next = NULL;
+	variable* var = malloc(sizeof(variable));
+	var->isComputed = false;
+	var->callback = NULL;
+	var->observers.head = NULL;
+	var->observers.tail = NULL;
+	var->next = NULL;
 	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-	//variable->oldValue = *pointer;
+	//var->oldValue = *pointer;
 	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
-	variable->value = pointer;
-	variable->size = size;
+	var->value = pointer;
+	var->size = size;
 	if (state.variables.head == NULL) {
-		state.variables.head = variable;
-		state.variables.tail = variable;
+		state.variables.head = var;
+		state.variables.tail = var;
 	} else {
-		state.variables.tail->next = variable;
-		state.variables.tail = variable;
+		state.variables.tail->next = var;
+		state.variables.tail = var;
 	}
 }
 
 void computed(void* pointer, size_t size, uint32_t (*callback)(void* imPointer)) {
 	DWORD oldProtect;
-	field* variable = malloc(sizeof(field));
-	variable->isComputed = TRUE;
-	variable->callback = callback;
-	variable->observers.head = NULL;
-	variable->observers.tail = NULL;
-	variable->next = NULL;
+	variable* var = malloc(sizeof(variable));
+	var->isComputed = true;
+	var->callback = callback;
+	var->observers.head = NULL;
+	var->observers.tail = NULL;
+	var->next = NULL;
 	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-	//variable->oldValue = *pointer;
+	//var->oldValue = *pointer;
 	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
-	variable->value = pointer;
-	variable->size = size;
+	var->value = pointer;
+	var->size = size;
 	if (state.variables.head == NULL) {
-		state.variables.head = variable;
-		state.variables.tail = variable;
+		state.variables.head = var;
+		state.variables.tail = var;
 	} else {
-		state.variables.tail->next = variable;
-		state.variables.tail = variable;
+		state.variables.tail->next = var;
+		state.variables.tail = var;
 	}
 }
 
@@ -245,7 +243,7 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer))
 	// for register watch() callback
 	// 1. get list of static variables on which observer variable depends (by call watch callback)
 	// 2. add watch callback to observers list of this variables
-	field* variable = getVariable(pointer);
+	variable* variable = getVariable(pointer);
 	observer* obs = malloc(sizeof(observer));
 	obs->depends.head = NULL;
 	obs->depends.tail = NULL;
@@ -261,15 +259,15 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer))
 	}
 	state.registerObserver = obs;
 	uint32_t (*computedCallback)(void* imPointer) = variable->callback;
-	BOOL isComputed = variable->isComputed;
+	bool isComputed = variable->isComputed;
 	if (isComputed) {
 		void* value = malloc(variable->size);
 		computedCallback(value, state.reactiveMem->imPointer); // call computed callback for #PF and enum observer depends in #PF handler routine
 		free(value);
 	} else {
-		char buf = *(char*)variable->value; // read byte for #PF and enum observer depends in #PF handler routine
+		uint8_t buf = *(uint8_t*)variable->value; // read byte for #PF and enum observer depends in #PF handler routine
 	}
-	varEntry* entry = obs->depends.head;
+	variableEntry* entry = obs->depends.head;
 	while (entry!=NULL) {
 		observerEntry* obsEntry = malloc(sizeof(observerEntry)); // TODO free() and check to malloc return NULL
 		obsEntry->observer = obs;
@@ -314,20 +312,20 @@ void freeReactivity() {
 	while (nextObs!=NULL) {
 		obsToFree = nextObs;
 		nextObs = nextObs->next;
-		varEntry* varEntryToFree = NULL;
-		varEntry* nextVarEntry = obsToFree->depends.head;
-		while (nextVarEntry!=NULL) {
-			varEntryToFree = nextVarEntry;
-			nextVarEntry = nextVarEntry->next;
-			free(varEntryToFree);
+		variableEntry* variableEntryToFree = NULL;
+		variableEntry* nextvariableEntry = obsToFree->depends.head;
+		while (nextvariableEntry!=NULL) {
+			variableEntryToFree = nextvariableEntry;
+			nextvariableEntry = nextvariableEntry->next;
+			free(variableEntryToFree);
 		}
 		free(obsToFree);
 	}
 	state.observers.head = NULL;
 	state.observers.tail = NULL;
 	// free variables
-	field* variableToFree = NULL;
-	field* nextVariable = state.variables.head;
+	variable* variableToFree = NULL;
+	variable* nextVariable = state.variables.head;
 	while (nextVariable!=NULL) {
 		variableToFree = nextVariable;
 		nextVariable = nextVariable->next;
