@@ -79,7 +79,7 @@ typedef struct engineState {
 } engineState;
 
 extern void ref(void* pointer, size_t size);
-extern void computed(void* pointer, size_t size, uint32_t (*callback)(void* imPointer));
+extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer));
 extern void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer));
 extern void* reactiveAlloc(size_t memSize);
 extern void reactiveFree(void* memPointer);

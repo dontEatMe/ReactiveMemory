@@ -121,7 +121,7 @@ void ref(void* pointer, size_t size) {
 	}
 }
 
-void computed(void* pointer, size_t size, uint32_t (*callback)(void* imPointer)) {
+void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer)) {
 	//DWORD oldProtect;
 	variable* var = malloc(sizeof(variable));
 	var->isComputed = true;

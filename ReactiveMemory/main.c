@@ -28,14 +28,18 @@ typedef struct someStruct {
 
 // user functions
 
-void computedField2(someComputedSubStruct* bufForReturnValue, someStruct* someStruct) {
-	bufForReturnValue->field1 = 1;
-	bufForReturnValue->field2 = someStruct->field1 + 2;
-	bufForReturnValue->field3 = 3;
+void computedField2(void* bufForReturnValue, void* imPointer) {
+	someComputedSubStruct* field2 = (someComputedSubStruct*)bufForReturnValue;
+	someStruct* _someStruct = (someStruct*)imPointer;
+	field2->field1 = 1;
+	field2->field2 = _someStruct->field1 + 2;
+	field2->field3 = 3;
 }
 
-void computedField3(uint32_t* bufForReturnValue, someStruct* someStruct) {
-	*bufForReturnValue = someStruct->field2.field2 + someStruct->field1;
+void computedField3(void* bufForReturnValue, void* imPointer) {
+	uint32_t* field3 = (uint32_t*)bufForReturnValue;
+	someStruct* _someStruct = (someStruct*)imPointer;
+	*field3 = _someStruct->field2.field2 + _someStruct->field1;
 }
 
 void triggerCallback1(uint32_t* variable, someStruct* someStruct) {
