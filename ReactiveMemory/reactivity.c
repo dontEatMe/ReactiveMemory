@@ -35,7 +35,6 @@ variable* getVariable(void* pointer) {
 }
 
 // if we run in kernel mode we can isolate reactive memory to kernel space to prevent write to it from user mode process
-
 LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	DWORD oldProtect;
 	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
@@ -162,7 +161,7 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer))
 		state.observers.tail = obs;
 	}
 	state.registerObserver = obs;
-	uint32_t (*computedCallback)(void* imPointer) = variable->callback;
+	void (*computedCallback)(void* bufForReturnValue, void* imPointer) = variable->callback;
 	bool isComputed = variable->isComputed;
 	if (isComputed) {
 		void* value = malloc(variable->size);
