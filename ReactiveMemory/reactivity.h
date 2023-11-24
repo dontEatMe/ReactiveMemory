@@ -36,8 +36,9 @@ typedef struct observerEntry {
 
 typedef struct variable {
 	void* value;
+	void* bufValue; // buffer for value from computed callback
+	void* oldValue;
 	size_t size;
-	//uint32_t oldValue;
 	bool isComputed;
 	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
 	struct {
@@ -49,7 +50,7 @@ typedef struct variable {
 
 typedef struct observer {
 	variable* variable; // variable to observe
-	void (*triggerCallback)(void* value, void* imPointer); // pointer to trigger callback
+	void (*triggerCallback)(void* value, void* oldValue, void* imPointer); // pointer to trigger callback
 	struct { // variables on which this observer depends
 		variableEntry* tail;
 		variableEntry* head;
@@ -80,7 +81,7 @@ typedef struct engineState {
 
 extern void ref(void* pointer, size_t size);
 extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer));
-extern void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer));
+extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer));
 extern void* reactiveAlloc(size_t memSize);
 extern void reactiveFree(void* memPointer);
 extern void initReactivity(REACTIVITY_MODE mode);

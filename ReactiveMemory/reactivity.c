@@ -57,15 +57,17 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				// lazy calculation, only on read
 				if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0) { // read
 					if (realAddr->isComputed) {
-						void* value = malloc(realAddr->size);
-						realAddr->callback(value, state.reactiveMem->imPointer);
+						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-						memcpy(realAddr->value, value, realAddr->size);
+						memcpy(realAddr->value, realAddr->bufValue, realAddr->size);
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
-						free(value);
 					}
 				} else if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // write
 					state.changedVariable = realAddr;
+					// save old value for ref variable
+					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+					memcpy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
+					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 				}
 			}
 			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
@@ -79,17 +81,18 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 			observerEntry* obsEntry = state.changedVariable->observers.head;
 			state.changedVariable = NULL;
 			while (obsEntry!=NULL) {
-				// TODO pass old value and new value
 				// TODO do not call computed callback here in NONLAZY_MODE
 				if (obsEntry->observer->variable->isComputed) {
-					void* value = malloc(obsEntry->observer->variable->size);
-					obsEntry->observer->variable->callback(value, state.reactiveMem->imPointer);
+					// save old value for computed variable
 					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-					memcpy(obsEntry->observer->variable->value, value, obsEntry->observer->variable->size);
+					memcpy(obsEntry->observer->variable->oldValue, obsEntry->observer->variable->value, obsEntry->observer->variable->size);
 					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
-					free(value);
+					obsEntry->observer->variable->callback(obsEntry->observer->variable->bufValue, state.reactiveMem->imPointer);
+					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+					memcpy(obsEntry->observer->variable->value, obsEntry->observer->variable->bufValue, obsEntry->observer->variable->size);
+					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 				}
-				obsEntry->observer->triggerCallback(obsEntry->observer->variable->value, state.reactiveMem->imPointer);
+				obsEntry->observer->triggerCallback(obsEntry->observer->variable->value, obsEntry->observer->variable->oldValue, state.reactiveMem->imPointer);
 				obsEntry = obsEntry->next;
 			}
 		}
@@ -98,17 +101,16 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	return EXCEPTION_CONTINUE_EXECUTION;
 }
 
+
 void ref(void* pointer, size_t size) {
-	//DWORD oldProtect;
 	variable* var = malloc(sizeof(variable));
 	var->isComputed = false;
 	var->callback = NULL;
 	var->observers.head = NULL;
 	var->observers.tail = NULL;
 	var->next = NULL;
-	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-	//var->oldValue = *pointer;
-	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+	var->bufValue = malloc(size);
+	var->oldValue = malloc(size);
 	var->value = pointer;
 	var->size = size;
 	if (state.variables.head == NULL) {
@@ -121,16 +123,14 @@ void ref(void* pointer, size_t size) {
 }
 
 void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer)) {
-	//DWORD oldProtect;
 	variable* var = malloc(sizeof(variable));
 	var->isComputed = true;
 	var->callback = callback;
 	var->observers.head = NULL;
 	var->observers.tail = NULL;
 	var->next = NULL;
-	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
-	//var->oldValue = *pointer;
-	//VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+	var->bufValue = malloc(size);
+	var->oldValue = malloc(size);
 	var->value = pointer;
 	var->size = size;
 	if (state.variables.head == NULL) {
@@ -142,7 +142,7 @@ void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnVal
 	}
 }
 
-void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer)) {
+void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer)) {
 	// for register watch() callback
 	// 1. get list of static variables on which observer variable depends (by call watch callback)
 	// 2. add watch callback to observers list of this variables
@@ -172,7 +172,7 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* imPointer))
 	}
 	variableEntry* entry = obs->depends.head;
 	while (entry!=NULL) {
-		observerEntry* obsEntry = malloc(sizeof(observerEntry)); // TODO free() and check to malloc return NULL
+		observerEntry* obsEntry = malloc(sizeof(observerEntry)); // TODO check to malloc return NULL
 		obsEntry->observer = obs;
 		obsEntry->next = NULL;
 		if (entry->variable->observers.head == NULL) {
@@ -216,10 +216,10 @@ void freeReactivity() {
 		obsToFree = nextObs;
 		nextObs = nextObs->next;
 		variableEntry* variableEntryToFree = NULL;
-		variableEntry* nextvariableEntry = obsToFree->depends.head;
-		while (nextvariableEntry!=NULL) {
-			variableEntryToFree = nextvariableEntry;
-			nextvariableEntry = nextvariableEntry->next;
+		variableEntry* nextVariableEntry = obsToFree->depends.head;
+		while (nextVariableEntry!=NULL) {
+			variableEntryToFree = nextVariableEntry;
+			nextVariableEntry = nextVariableEntry->next;
 			free(variableEntryToFree);
 		}
 		free(obsToFree);
@@ -239,6 +239,8 @@ void freeReactivity() {
 			nextObserverEntry = nextObserverEntry->next;
 			free(observerEntryToFree);
 		}
+		free(variableToFree->bufValue);
+		free(variableToFree->oldValue);
 		free(variableToFree);
 	}
 	state.variables.head = NULL;

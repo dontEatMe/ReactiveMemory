@@ -42,16 +42,18 @@ void computedField3(void* bufForReturnValue, void* imPointer) {
 	*field3 = _someStruct->field2.field2 + _someStruct->field1;
 }
 
-void triggerCallback1(void* value, void* imPointer) {
+void triggerCallback1(void* value, void* oldValue, void* imPointer) {
 	uint32_t* val = (uint32_t*)value;
+	uint32_t* oldVal = (someSubStruct*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
-	printf("[trigger1] watch value (field3): %u, field3 value: %u, field1 value: %u\n", *val, _someStruct->field3, _someStruct->field1);
+	printf("[trigger1] watch value (field3): %u, field3 value: %u, field1 value: %u, oldValue (field3): %u\n", *val, _someStruct->field3, _someStruct->field1, *oldVal);
 }
 
-void triggerCallback2(void* value, void* imPointer) {
+void triggerCallback2(void* value, void* oldValue, void* imPointer) {
 	someSubStruct* val = (someSubStruct*)value;
+	someSubStruct* oldVal = (someSubStruct*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
-	printf("[trigger2] watch value (field4.field3): %u, field1 value: %u\n", val->field3, _someStruct->field1);
+	printf("[trigger2] watch value (field4.field3): %u, field1 value: %u, oldValue (field4.field3): %u\n", val->field3, _someStruct->field1, oldVal->field3);
 }
 
 // tests here
