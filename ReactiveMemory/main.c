@@ -44,7 +44,7 @@ void computedField3(void* bufForReturnValue, void* imPointer) {
 
 void triggerCallback1(void* value, void* oldValue, void* imPointer) {
 	uint32_t* val = (uint32_t*)value;
-	uint32_t* oldVal = (someSubStruct*)oldValue;
+	uint32_t* oldVal = (uint32_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger1] watch value (field3): %u, field3 value: %u, field1 value: %u, oldValue (field3): %u\n", *val, _someStruct->field3, _someStruct->field1, *oldVal);
 }
