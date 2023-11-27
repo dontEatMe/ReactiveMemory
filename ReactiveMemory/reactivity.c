@@ -164,9 +164,7 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, v
 	void (*computedCallback)(void* bufForReturnValue, void* imPointer) = variable->callback;
 	bool isComputed = variable->isComputed;
 	if (isComputed) {
-		void* value = malloc(variable->size);
-		computedCallback(value, state.reactiveMem->imPointer); // call computed callback for #PF and enum observer depends in #PF handler routine
-		free(value);
+		computedCallback(variable->bufValue, state.reactiveMem->imPointer); // call computed callback for #PF and enum observer depends in #PF handler routine
 	} else {
 		uint8_t buf = *(uint8_t*)variable->value; // read byte for #PF and enum observer depends in #PF handler routine
 	}

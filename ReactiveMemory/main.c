@@ -53,7 +53,7 @@ void triggerCallback2(void* value, void* oldValue, void* imPointer) {
 	someSubStruct* val = (someSubStruct*)value;
 	someSubStruct* oldVal = (someSubStruct*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
-	printf("[trigger2] watch value (field4.field3): %u, field1 value: %u, oldValue (field4.field3): %u\n", val->field3, _someStruct->field1, oldVal->field3);
+	printf("[trigger2] watch value (field4.field3): %u, field4.field3 value: %u, field1 value: %u, oldValue (field4.field3): %u\n", val->field3, _someStruct->field4.field3, _someStruct->field1, oldVal->field3);
 }
 
 // tests here
