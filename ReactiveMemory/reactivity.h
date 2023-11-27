@@ -29,11 +29,6 @@ typedef struct variableEntry {
 	struct variableEntry* next;
 } variableEntry;
 
-typedef struct observerEntry {
-	struct observer* observer;
-	struct observerEntry* next;
-} observerEntry;
-
 typedef struct variable {
 	void* value;
 	void* bufValue; // buffer for value from computed callback
@@ -41,22 +36,17 @@ typedef struct variable {
 	size_t size;
 	bool isComputed;
 	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
-	struct {
-		observerEntry* tail;
-		observerEntry* head;
-	} observers;
-	struct variable* next; // TODO double-linked list
-} variable;
-
-typedef struct observer {
-	variable* variable; // variable to observe
 	void (*triggerCallback)(void* value, void* oldValue, void* imPointer); // pointer to trigger callback
-	struct { // variables on which this observer depends
+	struct { // variables which depends on this variable
+		variableEntry* tail;
+		variableEntry* head;
+	} observers;
+	struct { // variables on which this variable depends, valid only for computed
 		variableEntry* tail;
 		variableEntry* head;
 	} depends;
-	struct observer* next; // TODO double-linked list
-} observer;
+	struct variable* next; // TODO double-linked list
+} variable;
 
 typedef struct mmBlock {
 	void* imPointer;
@@ -64,15 +54,11 @@ typedef struct mmBlock {
 } mmBlock;
 
 typedef struct engineState {
-	observer* registerObserver;
+	variable* registerComputed;
 	variable* changedVariable;
 	mmBlock* reactiveMem;
 	void* exHandler;
 	REACTIVITY_MODE mode;
-	struct {
-		observer* tail;
-		observer* head;
-	} observers;
 	struct {
 		variable* tail;
 		variable* head;
