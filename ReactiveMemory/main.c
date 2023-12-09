@@ -56,7 +56,7 @@ void computedField3(void* bufForReturnValue, void* imPointer) {
 }
 
 void computedCount(void* bufForReturnValue, void* imPointer) {
-	size_t* count = (uint32_t*)bufForReturnValue;
+	size_t* count = (size_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	size_t counter = 0;
 	counter++;
@@ -86,7 +86,7 @@ void triggerCallback3(void* value, void* oldValue, void* imPointer) {
 	size_t* val = (size_t*)value;
 	size_t* oldVal = (size_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
-	printf("[trigger3] watch value (count): %u, oldValue (count): %u\n", *val, *oldVal);
+	printf("[trigger3] watch value (count): %llu, oldValue (count): %llu\n", *val, *oldVal);
 }
 
 // tests here
@@ -116,7 +116,7 @@ int main() {
 	someStruct->field1 = 0;
 	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
-	printf("array elements count: %u\n", someStruct->count);
+	printf("array elements count: %llu\n", someStruct->count);
 	printf("add second element to array\n");
 	someStruct->elem1.listEntry.next =  &someStruct->elem2;
 	printf("add third element to array\n");
@@ -130,7 +130,7 @@ int main() {
 	someStruct->field4.field3 = 5;
 	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
-	printf("array elements count: %u\n", someStruct->count);
+	printf("array elements count: %llu\n", someStruct->count);
 
 	reactiveFree(someStruct);
 	freeReactivity();
