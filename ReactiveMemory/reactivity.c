@@ -43,21 +43,25 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 					// 2. add computed observer to every static variable
 					variableEntry* dependsEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
 					dependsEntry->variable = realAddr;
+					dependsEntry->prev = NULL;
 					dependsEntry->next = NULL;
 					if (state.registerComputed->depends.head == NULL) {
 						state.registerComputed->depends.head = dependsEntry;
 						state.registerComputed->depends.tail = dependsEntry;
 					} else {
+						dependsEntry->prev = state.registerComputed->depends.tail;
 						state.registerComputed->depends.tail->next = dependsEntry;
 						state.registerComputed->depends.tail = dependsEntry;
 					}
 					variableEntry* observersEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
 					observersEntry->variable = state.registerComputed;
+					observersEntry->prev = NULL;
 					observersEntry->next = NULL;
 					if (realAddr->observers.head == NULL) {
 						realAddr->observers.head = observersEntry;
 						realAddr->observers.tail = observersEntry;
 					} else {
+						observersEntry->prev = realAddr->observers.tail;
 						realAddr->observers.tail->next = observersEntry;
 						realAddr->observers.tail = observersEntry;
 					}
@@ -89,7 +93,10 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 		if (state.changedVariable!=NULL) {
 			variable* refVariable = state.changedVariable;
 			state.changedVariable = NULL;
+			variableEntry* compEntryToFree = NULL;
 			variableEntry* compEntry = refVariable->observers.head;
+			refVariable->observers.head = NULL;
+			refVariable->observers.tail = NULL;
 			if (refVariable->triggerCallback!=NULL) {
 				refVariable->triggerCallback(refVariable->value, refVariable->oldValue, state.reactiveMem->imPointer);
 			}
@@ -100,14 +107,55 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 				memcpy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
 				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+				// update computed variable depends
+				// free depends list
+				variableEntry* variableEntryToFree = NULL;
+				variableEntry* nextVariableEntry = compEntry->variable->depends.head;
+				while (nextVariableEntry!=NULL) {
+					variableEntryToFree = nextVariableEntry;
+					nextVariableEntry = nextVariableEntry->next;
+					// find and remove it from depend variable observers list
+					variableEntry* observerVariableEntryToFree = NULL;
+					variableEntry* observerNextVariableEntry = variableEntryToFree->variable->observers.head;
+					while (observerNextVariableEntry!=NULL) {
+						if (observerNextVariableEntry->variable == compEntry->variable) {
+							if (observerNextVariableEntry->prev!=NULL) {
+								observerNextVariableEntry->prev->next = observerNextVariableEntry->next;
+								if (observerNextVariableEntry->next==NULL) { // this is last element
+									variableEntryToFree->variable->observers.tail = observerNextVariableEntry->prev;
+								}
+							} else { // this is first element
+								if (observerNextVariableEntry->next!=NULL) {
+									variableEntryToFree->variable->observers.head = observerNextVariableEntry->next;
+								} else { // only one element
+									variableEntryToFree->variable->observers.head = NULL;
+									variableEntryToFree->variable->observers.tail = NULL;
+								}
+							}
+							if (observerNextVariableEntry->next!=NULL) {
+								observerNextVariableEntry->next->prev = observerNextVariableEntry->prev;
+							}
+							free(observerNextVariableEntry);
+							break; // TODO what if we access more than one time to the same variable?
+						}
+						observerNextVariableEntry = observerNextVariableEntry->next;
+					}
+					free(variableEntryToFree);
+				}
+				compEntry->variable->depends.head = NULL;
+				compEntry->variable->depends.tail = NULL;
+				state.registerComputed = compEntry->variable;
 				compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
+				state.registerComputed = NULL;
 				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 				memcpy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
 				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 				if (compEntry->variable->triggerCallback!=NULL) {
 					compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
 				}
+				compEntryToFree = compEntry;
 				compEntry = compEntry->next;
+				free(compEntryToFree);
 			}
 		}
 		//printf("EXCEPTION_SINGLE_STEP\n");

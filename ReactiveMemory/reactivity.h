@@ -26,6 +26,7 @@ typedef enum REACTIVITY_MODE {
 
 typedef struct variableEntry {
 	struct variable* variable;
+	struct variableEntry* prev;
 	struct variableEntry* next;
 } variableEntry;
 
