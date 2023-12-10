@@ -38,32 +38,44 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 		if (realAddr!=NULL) {
 			if (state.registerComputed != NULL) {
 				if (!realAddr->isComputed) {
-					// for register computed variable (will be call multiple times for one computed variable)
-					// 1. get list of static variables on which computed variable depends (by call computed callback)
-					// 2. add computed observer to every static variable
-					variableEntry* dependsEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
-					dependsEntry->variable = realAddr;
-					dependsEntry->prev = NULL;
-					dependsEntry->next = NULL;
-					if (state.registerComputed->depends.head == NULL) {
-						state.registerComputed->depends.head = dependsEntry;
-						state.registerComputed->depends.tail = dependsEntry;
-					} else {
-						dependsEntry->prev = state.registerComputed->depends.tail;
-						state.registerComputed->depends.tail->next = dependsEntry;
-						state.registerComputed->depends.tail = dependsEntry;
+					// check for variable already added to depends list
+					variableEntry* testDependsEntry = state.registerComputed->depends.head;
+					bool variableFound = false;
+					while (testDependsEntry != NULL) {
+						if (testDependsEntry->variable == realAddr) {
+							variableFound = true;
+							break;
+						}
+						testDependsEntry = testDependsEntry->next;
 					}
-					variableEntry* observersEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
-					observersEntry->variable = state.registerComputed;
-					observersEntry->prev = NULL;
-					observersEntry->next = NULL;
-					if (realAddr->observers.head == NULL) {
-						realAddr->observers.head = observersEntry;
-						realAddr->observers.tail = observersEntry;
-					} else {
-						observersEntry->prev = realAddr->observers.tail;
-						realAddr->observers.tail->next = observersEntry;
-						realAddr->observers.tail = observersEntry;
+					if (!variableFound) {
+						// for register computed variable (will be call multiple times for one computed variable)
+						// 1. get list of static variables on which computed variable depends (by call computed callback)
+						// 2. add computed observer to every static variable
+						variableEntry* dependsEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
+						dependsEntry->variable = realAddr;
+						dependsEntry->prev = NULL;
+						dependsEntry->next = NULL;
+						if (state.registerComputed->depends.head == NULL) {
+							state.registerComputed->depends.head = dependsEntry;
+							state.registerComputed->depends.tail = dependsEntry;
+						} else {
+							dependsEntry->prev = state.registerComputed->depends.tail;
+							state.registerComputed->depends.tail->next = dependsEntry;
+							state.registerComputed->depends.tail = dependsEntry;
+						}
+						variableEntry* observersEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
+						observersEntry->variable = state.registerComputed;
+						observersEntry->prev = NULL;
+						observersEntry->next = NULL;
+						if (realAddr->observers.head == NULL) {
+							realAddr->observers.head = observersEntry;
+							realAddr->observers.tail = observersEntry;
+						} else {
+							observersEntry->prev = realAddr->observers.tail;
+							realAddr->observers.tail->next = observersEntry;
+							realAddr->observers.tail = observersEntry;
+						}
 					}
 				}
 			} else {

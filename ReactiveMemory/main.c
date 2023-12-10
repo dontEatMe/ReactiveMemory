@@ -30,6 +30,7 @@ typedef struct someComputedSubStruct {
 
 typedef struct someStruct {
 	uint32_t field1;
+	uint64_t doubleField1;
 	someComputedSubStruct field2;
 	uint32_t field3;
 	someSubStruct field4;
@@ -53,6 +54,12 @@ void computedField3(void* bufForReturnValue, void* imPointer) {
 	uint32_t* field3 = (uint32_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field3 = _someStruct->field2.field2 + _someStruct->field1;
+}
+
+void computedDoubleField1(void* bufForReturnValue, void* imPointer) {
+	uint64_t* doubleField1 = (uint64_t*)bufForReturnValue;
+	someStruct* _someStruct = (someStruct*)imPointer;
+	*doubleField1 = _someStruct->field1 + _someStruct->field1;
 }
 
 void computedCount(void* bufForReturnValue, void* imPointer) {
@@ -89,6 +96,13 @@ void triggerCallback3(void* value, void* oldValue, void* imPointer) {
 	printf("[trigger3] watch value (count): %llu, oldValue (count): %llu\n", *val, *oldVal);
 }
 
+void triggerCallback4(void* value, void* oldValue, void* imPointer) {
+	uint64_t* val = (uint64_t*)value;
+	uint64_t* oldVal = (uint64_t*)oldValue;
+	someStruct* _someStruct = (someStruct*)imPointer;
+	printf("[trigger4] watch value (doubleField1): %llu, oldValue (doubleField1): %llu\n", *val, *oldVal);
+}
+
 // tests here
 
 int main() {
@@ -98,6 +112,7 @@ int main() {
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 
 	ref(&someStruct->field1, sizeof(someStruct->field1));
+	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1);
 	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
 	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3);
 	ref(&someStruct->field4, sizeof(someStruct->field4));
@@ -112,10 +127,12 @@ int main() {
 	someStruct->elem3.listEntry.next = NULL;
 	computed(&someStruct->count, sizeof(someStruct->count), computedCount);
 	watch(&someStruct->count, triggerCallback3);
+	watch(&someStruct->doubleField1, triggerCallback4);
 	
 	someStruct->field1 = 0;
 	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
+	printf("doubleField1: %llu\n", someStruct->doubleField1);
 	printf("array elements count: %llu\n", someStruct->count);
 	printf("add second element to array\n");
 	someStruct->elem1.listEntry.next =  &someStruct->elem2;
