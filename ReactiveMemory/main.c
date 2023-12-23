@@ -7,7 +7,6 @@
 
 // user structures
 
-
 typedef struct arrayElementStruct {
 	size_t field1;
 	struct {
@@ -34,6 +33,7 @@ typedef struct someStruct {
 	someComputedSubStruct field2;
 	uint32_t field3;
 	someSubStruct field4;
+	uint64_t field5;
 	arrayElementStruct elem1;
 	arrayElementStruct elem2;
 	arrayElementStruct elem3;
@@ -60,6 +60,13 @@ void computedDoubleField1(void* bufForReturnValue, void* imPointer) {
 	uint64_t* doubleField1 = (uint64_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*doubleField1 = _someStruct->field1 + _someStruct->field1;
+}
+
+void computedField5(void* bufForReturnValue, void* imPointer) {
+	DWORD oldProtect;
+	uint64_t* field5 = (uint64_t*)bufForReturnValue;
+	someStruct* _someStruct = (someStruct*)imPointer;
+	*field5 = _someStruct->field3 + _someStruct->field2.field2;
 }
 
 void computedCount(void* bufForReturnValue, void* imPointer) {
@@ -115,6 +122,7 @@ int main() {
 	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1);
 	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
 	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3);
+	computed(&someStruct->field5, sizeof(someStruct->field5), computedField5);
 	ref(&someStruct->field4, sizeof(someStruct->field4));
 	ref(&someStruct->elem1, sizeof(someStruct->elem1));
 	ref(&someStruct->elem2, sizeof(someStruct->elem2));
@@ -126,13 +134,15 @@ int main() {
 	someStruct->elem3.listEntry.prev = &someStruct->elem2;
 	someStruct->elem3.listEntry.next = NULL;
 	computed(&someStruct->count, sizeof(someStruct->count), computedCount);
+
 	watch(&someStruct->count, triggerCallback3);
 	watch(&someStruct->doubleField1, triggerCallback4);
+	
+	printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
 	
 	someStruct->field1 = 0;
 	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
-	printf("doubleField1: %llu\n", someStruct->doubleField1);
 	printf("array elements count: %llu\n", someStruct->count);
 	printf("add second element to array\n");
 	someStruct->elem1.listEntry.next =  &someStruct->elem2;
@@ -147,6 +157,7 @@ int main() {
 	someStruct->field4.field3 = 5;
 	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
+	printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
 	printf("array elements count: %llu\n", someStruct->count);
 
 	reactiveFree(someStruct);

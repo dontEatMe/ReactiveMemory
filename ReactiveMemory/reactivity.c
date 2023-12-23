@@ -33,7 +33,7 @@ variable* getVariable(void* pointer) {
 // if we run in kernel mode we can isolate reactive memory to kernel space to prevent write to it from user mode process
 LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 	DWORD oldProtect;
-	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_GUARD_PAGE) {
 		variable* realAddr = getVariable((void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		if (realAddr!=NULL) {
 			if (state.registerComputed != NULL) {
@@ -82,26 +82,23 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				// lazy calculation, only on read
 				if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0) { // read
 					if (realAddr->isComputed) {
+						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
 						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
 						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 						memcpy(realAddr->value, realAddr->bufValue, realAddr->size);
-						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 					}
 				} else if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // write
 					state.changedVariable = realAddr;
 					// save old value for ref variable
-					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 					memcpy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
-					VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
 				}
 			}
-			VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 			ExceptionInfo->ContextRecord->EFlags |= 0x00000100; // trap flag for get exception after memory access instruction
-			//printf("EXCEPTION_ACCESS_VIOLATION\n");
+			//printf("EXCEPTION_GUARD_PAGE\n");
 		}
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
-		VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+		VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
 		if (state.changedVariable!=NULL) {
 			variable* refVariable = state.changedVariable;
 			state.changedVariable = NULL;
@@ -118,7 +115,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				// TODO MODE_LAZY
 				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 				memcpy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
-				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
 				// update computed variable depends
 				// free depends list
 				variableEntry* variableEntryToFree = NULL;
@@ -148,7 +145,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 								observerNextVariableEntry->next->prev = observerNextVariableEntry->prev;
 							}
 							free(observerNextVariableEntry);
-							break; // TODO what if we access more than one time to the same variable?
+							break;
 						}
 						observerNextVariableEntry = observerNextVariableEntry->next;
 					}
@@ -161,7 +158,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				state.registerComputed = NULL;
 				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
 				memcpy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
-				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_NOACCESS, &oldProtect);
+				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
 				if (compEntry->variable->triggerCallback!=NULL) {
 					compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
 				}
@@ -219,7 +216,7 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, v
 
 void* reactiveAlloc(size_t memSize) {
 	mmBlock* block = malloc(sizeof(mmBlock));
-	block->imPointer = VirtualAlloc(NULL, memSize, MEM_COMMIT|MEM_RESERVE, PAGE_NOACCESS); // imaginary pages
+	block->imPointer = VirtualAlloc(NULL, memSize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE|PAGE_GUARD); // imaginary pages
 	block->size = memSize;
 	state.reactiveMem = block;
 	return block->imPointer;
