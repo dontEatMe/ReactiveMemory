@@ -11,7 +11,9 @@ engineState state = {
 	.variables = {
 		.tail = NULL,
 		.head = NULL
-	}
+	},
+	.memAlloc = NULL,
+	.memFree = NULL
 };
 
 // engine functions
@@ -110,7 +112,6 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				refVariable->triggerCallback(refVariable->value, refVariable->oldValue, state.reactiveMem->imPointer);
 			}
 			while (compEntry!=NULL) {
-				// TODO on change ref() variable on which computed() variable depends we must update list of computed dependencies
 				// save old value for computed variable
 				// TODO MODE_LAZY
 				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
@@ -228,13 +229,17 @@ void reactiveFree(void* memPointer) {
 	state.reactiveMem = NULL;
 }
 
-void initReactivity(REACTIVITY_MODE mode) {
+void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (*memFree)(void* pointer)) {
 	state.mode = mode;
+	state.memAlloc = memAlloc;
+	state.memFree = memFree;
 	state.exHandler = AddVectoredExceptionHandler(1, imExeption);
 }
 
 void freeReactivity() {
 	RemoveVectoredExceptionHandler(state.exHandler);
+	state.memAlloc = NULL;
+	state.memFree = NULL;
 	state.exHandler = NULL;
 	// free variables
 	variable* variableToFree = NULL;

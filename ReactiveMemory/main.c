@@ -63,7 +63,6 @@ void computedDoubleField1(void* bufForReturnValue, void* imPointer) {
 }
 
 void computedField5(void* bufForReturnValue, void* imPointer) {
-	DWORD oldProtect;
 	uint64_t* field5 = (uint64_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field5 = _someStruct->field3 + _someStruct->field2.field2;
@@ -115,7 +114,7 @@ void triggerCallback4(void* value, void* oldValue, void* imPointer) {
 int main() {
 	printf("reactive memory app\n");
 
-	initReactivity(MODE_NONLAZY);
+	initReactivity(MODE_NONLAZY, malloc, free);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 
 	ref(&someStruct->field1, sizeof(someStruct->field1));
