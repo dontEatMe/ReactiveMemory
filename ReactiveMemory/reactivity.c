@@ -54,7 +54,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 						// for register computed variable (will be call multiple times for one computed variable)
 						// 1. get list of static variables on which computed variable depends (by call computed callback)
 						// 2. add computed observer to every static variable
-						variableEntry* dependsEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
+						variableEntry* dependsEntry = state.memAlloc(sizeof(variableEntry)); // TODO check to state.memAlloc return NULL
 						dependsEntry->variable = realAddr;
 						dependsEntry->prev = NULL;
 						dependsEntry->next = NULL;
@@ -66,7 +66,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 							state.registerComputed->depends.tail->next = dependsEntry;
 							state.registerComputed->depends.tail = dependsEntry;
 						}
-						variableEntry* observersEntry = malloc(sizeof(variableEntry)); // TODO check to malloc return NULL
+						variableEntry* observersEntry = state.memAlloc(sizeof(variableEntry)); // TODO check to state.memAlloc return NULL
 						observersEntry->variable = state.registerComputed;
 						observersEntry->prev = NULL;
 						observersEntry->next = NULL;
@@ -145,12 +145,12 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 							if (observerNextVariableEntry->next!=NULL) {
 								observerNextVariableEntry->next->prev = observerNextVariableEntry->prev;
 							}
-							free(observerNextVariableEntry);
+							state.memFree(observerNextVariableEntry);
 							break;
 						}
 						observerNextVariableEntry = observerNextVariableEntry->next;
 					}
-					free(variableEntryToFree);
+					state.memFree(variableEntryToFree);
 				}
 				compEntry->variable->depends.head = NULL;
 				compEntry->variable->depends.tail = NULL;
@@ -165,7 +165,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				}
 				compEntryToFree = compEntry;
 				compEntry = compEntry->next;
-				free(compEntryToFree);
+				state.memFree(compEntryToFree);
 			}
 		}
 		//printf("EXCEPTION_SINGLE_STEP\n");
@@ -174,7 +174,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 }
 
 variable* createVariable(void* pointer, size_t size) {
-	variable* var = malloc(sizeof(variable));
+	variable* var = state.memAlloc(sizeof(variable));
 	var->isComputed = false;
 	var->callback = NULL;
 	var->triggerCallback = NULL;
@@ -183,8 +183,8 @@ variable* createVariable(void* pointer, size_t size) {
 	var->depends.head = NULL;
 	var->depends.tail = NULL;
 	var->next = NULL;
-	var->bufValue = malloc(size);
-	var->oldValue = malloc(size);
+	var->bufValue = state.memAlloc(size);
+	var->oldValue = state.memAlloc(size);
 	var->value = pointer;
 	var->size = size;
 	if (state.variables.head == NULL) {
@@ -216,7 +216,7 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, v
 }
 
 void* reactiveAlloc(size_t memSize) {
-	mmBlock* block = malloc(sizeof(mmBlock));
+	mmBlock* block = state.memAlloc(sizeof(mmBlock));
 	block->imPointer = VirtualAlloc(NULL, memSize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE|PAGE_GUARD); // imaginary pages
 	block->size = memSize;
 	state.reactiveMem = block;
@@ -225,7 +225,7 @@ void* reactiveAlloc(size_t memSize) {
 
 void reactiveFree(void* memPointer) {
 	VirtualFree(memPointer, 0, MEM_RELEASE);
-	free(state.reactiveMem);
+	state.memFree(state.reactiveMem);
 	state.reactiveMem = NULL;
 }
 
@@ -238,8 +238,6 @@ void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (
 
 void freeReactivity() {
 	RemoveVectoredExceptionHandler(state.exHandler);
-	state.memAlloc = NULL;
-	state.memFree = NULL;
 	state.exHandler = NULL;
 	// free variables
 	variable* variableToFree = NULL;
@@ -255,7 +253,7 @@ void freeReactivity() {
 		while (nextVariableEntry!=NULL) {
 			variableEntryToFree = nextVariableEntry;
 			nextVariableEntry = nextVariableEntry->next;
-			free(variableEntryToFree);
+			state.memFree(variableEntryToFree);
 		}
 		variableToFree->observers.head = NULL;
 		variableToFree->observers.tail = NULL;
@@ -265,14 +263,16 @@ void freeReactivity() {
 		while (nextVariableEntry!=NULL) {
 			variableEntryToFree = nextVariableEntry;
 			nextVariableEntry = nextVariableEntry->next;
-			free(variableEntryToFree);
+			state.memFree(variableEntryToFree);
 		}
 		variableToFree->depends.head = NULL;
 		variableToFree->depends.tail = NULL;
-		free(variableToFree->bufValue);
-		free(variableToFree->oldValue);
-		free(variableToFree);
+		state.memFree(variableToFree->bufValue);
+		state.memFree(variableToFree->oldValue);
+		state.memFree(variableToFree);
 	}
 	state.variables.head = NULL;
 	state.variables.tail = NULL;
+	state.memAlloc = NULL;
+	state.memFree = NULL;
 }
