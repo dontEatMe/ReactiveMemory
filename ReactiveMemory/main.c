@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <windows.h>
 #include "reactivity.h"
 
@@ -58,6 +59,11 @@ void pagesProtectLock(void* pointer, size_t size) {
 void pagesProtectUnlock(void* pointer, size_t size) {
 	DWORD oldProtect;
 	VirtualProtect(pointer, size, PAGE_READWRITE, &oldProtect);
+}
+
+void enableTrap(void* userData) {
+	PEXCEPTION_POINTERS ExceptionInfo = (PEXCEPTION_POINTERS)userData;
+	ExceptionInfo->ContextRecord->EFlags |= 0x00000100;
 }
 
 void computedField2(void* bufForReturnValue, void* imPointer) {
@@ -127,12 +133,30 @@ void triggerCallback4(void* value, void* oldValue, void* imPointer) {
 	printf("[trigger4] watch value (doubleField1): %llu, oldValue (doubleField1): %llu\n", *val, *oldVal);
 }
 
+LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
+	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_GUARD_PAGE) {
+		if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0 || ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // 0 = read, 1 = write, 8 = DEP
+			bool isWrite = false;
+			if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) {
+				isWrite = true;
+			}
+			exceptionHandler(ExceptionInfo, EXCEPTION_PAGEFAULT, isWrite, (void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+		}
+	} else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
+		exceptionHandler(ExceptionInfo, EXCEPTION_DEBUG, false, NULL);	
+	}
+	return EXCEPTION_CONTINUE_EXECUTION;
+}
+
 // tests here
 
 int main() {
+	void* exHandler;
+
 	printf("reactive memory app\n");
 
-	initReactivity(MODE_NONLAZY, malloc, free, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock);
+	initReactivity(MODE_NONLAZY, malloc, free, memcpy, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap);
+	exHandler = AddVectoredExceptionHandler(1, imExeption);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 
 	ref(&someStruct->field1, sizeof(someStruct->field1));
@@ -178,6 +202,9 @@ int main() {
 	printf("array elements count: %llu\n", someStruct->count);
 
 	reactiveFree(someStruct);
+
+	
+	RemoveVectoredExceptionHandler(exHandler);
 	freeReactivity();
 
 	getchar();

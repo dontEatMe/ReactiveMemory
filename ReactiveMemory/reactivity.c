@@ -6,7 +6,6 @@ engineState state = {
 	.registerComputed = NULL, // TODO mutex
 	.changedVariable = NULL,
 	.reactiveMem = NULL,
-	.exHandler = NULL,
 	.mode = MODE_LAZY,
 	.variables = {
 		.tail = NULL,
@@ -14,6 +13,7 @@ engineState state = {
 	},
 	.memAlloc = NULL,
 	.memFree = NULL,
+	.memCopy = NULL,
 	.pagesAlloc = NULL,
 	.pagesFree = NULL,
 	.pagesProtectLock = NULL,
@@ -37,10 +37,9 @@ variable* getVariable(void* pointer) {
 }
 
 // if we run in kernel mode we can isolate reactive memory to kernel space to prevent write to it from user mode process
-LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
-	DWORD oldProtect;
-	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_GUARD_PAGE) {
-		variable* realAddr = getVariable((void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWrite, void* pointer) {
+	if (exception == EXCEPTION_PAGEFAULT) {
+		variable* realAddr = getVariable(pointer);
 		if (realAddr!=NULL) {
 			if (state.registerComputed != NULL) {
 				if (!realAddr->isComputed) {
@@ -86,24 +85,24 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				}
 			} else {
 				// lazy calculation, only on read
-				if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0) { // read
+				if (!isWrite) { // read
 					if (realAddr->isComputed) {
 						state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
 						state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
-						memcpy(realAddr->value, realAddr->bufValue, realAddr->size);
+						state.memCopy(realAddr->value, realAddr->bufValue, realAddr->size);
 					}
-				} else if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // write
+				} else { // write
 					state.changedVariable = realAddr;
 					// save old value for ref variable
-					memcpy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
+					state.memCopy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
 				}
 			}
-			ExceptionInfo->ContextRecord->EFlags |= 0x00000100; // trap flag for get exception after memory access instruction
-			//printf("EXCEPTION_GUARD_PAGE\n");
+			state.enableTrap(userData); // trap flag for get exception after memory access instruction
+			//printf("EXCEPTION_PAGEFAULT\n");
 		}
 	}
-	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
+	else if (exception == EXCEPTION_DEBUG) {
 		state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 		if (state.changedVariable!=NULL) {
 			variable* refVariable = state.changedVariable;
@@ -119,7 +118,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				// save old value for computed variable
 				// TODO MODE_LAZY
 				state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
-				memcpy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
+				state.memCopy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
 				state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 				// update computed variable depends
 				// free depends list
@@ -162,7 +161,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
 				state.registerComputed = NULL;
 				state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
-				memcpy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
+				state.memCopy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
 				state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 				if (compEntry->variable->triggerCallback!=NULL) {
 					compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
@@ -172,9 +171,8 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				state.memFree(compEntryToFree);
 			}
 		}
-		//printf("EXCEPTION_SINGLE_STEP\n");
+		//printf("EXCEPTION_DEBUG\n");
 	}
-	return EXCEPTION_CONTINUE_EXECUTION;
 }
 
 variable* createVariable(void* pointer, size_t size) {
@@ -233,20 +231,19 @@ void reactiveFree(void* memPointer) {
 	state.reactiveMem = NULL;
 }
 
-void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (*memFree)(void* pointer), void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size)) {
+void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (*memFree)(void* pointer), void* (*memCopy)(void* destination, const void* source, size_t size), void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
 	state.mode = mode;
 	state.memAlloc = memAlloc;
 	state.memFree = memFree;
+	state.memCopy = memCopy;
 	state.pagesAlloc = pagesAlloc;
 	state.pagesFree = pagesFree;
 	state.pagesProtectLock = pagesProtectLock;
 	state.pagesProtectUnlock = pagesProtectUnlock;
-	state.exHandler = AddVectoredExceptionHandler(1, imExeption);
+	state.enableTrap = enableTrap;
 }
 
 void freeReactivity() {
-	RemoveVectoredExceptionHandler(state.exHandler);
-	state.exHandler = NULL;
 	// free variables
 	variable* variableToFree = NULL;
 	variable* nextVariable = state.variables.head;
@@ -283,6 +280,7 @@ void freeReactivity() {
 	state.variables.tail = NULL;
 	state.memAlloc = NULL;
 	state.memFree = NULL;
+	state.memCopy = NULL;
 	state.pagesAlloc = NULL;
 	state.pagesFree = NULL;
 	state.pagesProtectLock = NULL;
