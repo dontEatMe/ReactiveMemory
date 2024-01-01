@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
-#include "reactivity.h"
+#include "../ReactiveMemory/reactivity.h"
 
 // user structures
 
@@ -203,7 +203,6 @@ int main() {
 
 	reactiveFree(someStruct);
 
-	
 	RemoveVectoredExceptionHandler(exHandler);
 	freeReactivity();
 

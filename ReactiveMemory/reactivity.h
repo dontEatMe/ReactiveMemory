@@ -21,7 +21,6 @@ typedef enum REACTIVITY_MODE {
 //  2. on every change static variable value check dependent of this variable computed variables and recalculate it
 //  3. callbacks of the computed variables must not be manually changed
 
-
 typedef enum REACTIVITY_EXCEPTION {
 	EXCEPTION_PAGEFAULT = 0,
 	EXCEPTION_DEBUG = 1
