@@ -123,7 +123,7 @@ void triggerCallback3(void* value, void* oldValue, void* imPointer) {
 	size_t* val = (size_t*)value;
 	size_t* oldVal = (size_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
-	printf("[trigger3] watch value (count): %llu, oldValue (count): %llu\n", *val, *oldVal);
+	printf("[trigger3] watch value (count): %zu, oldValue (count): %zu\n", *val, *oldVal);
 }
 
 void triggerCallback4(void* value, void* oldValue, void* imPointer) {
@@ -184,7 +184,7 @@ int main() {
 	someStruct->field1 = 0;
 	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
-	printf("array elements count: %llu\n", someStruct->count);
+	printf("array elements count: %zu\n", someStruct->count);
 	printf("add second element to array\n");
 	someStruct->elem1.listEntry.next =  &someStruct->elem2;
 	printf("add third element to array\n");
@@ -199,7 +199,7 @@ int main() {
 	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
 	printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
-	printf("array elements count: %llu\n", someStruct->count);
+	printf("array elements count: %zu\n", someStruct->count);
 
 	reactiveFree(someStruct);
 

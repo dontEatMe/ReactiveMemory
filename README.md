@@ -1,3 +1,4 @@
 # ReactiveMemory
-exceptions-based reactivity for C language  
-windows x64 only  
+exceptions-based reactivity engine for C language  
+zero-dependency  
+builds for windows x86/x64  
