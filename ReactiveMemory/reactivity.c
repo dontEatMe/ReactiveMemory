@@ -17,7 +17,8 @@ engineState state = {
 	.pagesAlloc = NULL,
 	.pagesFree = NULL,
 	.pagesProtectLock = NULL,
-	.pagesProtectUnlock = NULL
+	.pagesProtectUnlock = NULL,
+	.enableTrap = NULL
 };
 
 // engine functions
@@ -285,4 +286,5 @@ void freeReactivity() {
 	state.pagesFree = NULL;
 	state.pagesProtectLock = NULL;
 	state.pagesProtectUnlock = NULL;
+	state.enableTrap = NULL;
 }
