@@ -13,7 +13,11 @@ engineState state = {
 		.head = NULL
 	},
 	.memAlloc = NULL,
-	.memFree = NULL
+	.memFree = NULL,
+	.pagesAlloc = NULL,
+	.pagesFree = NULL,
+	.pagesProtectLock = NULL,
+	.pagesProtectUnlock = NULL
 };
 
 // engine functions
@@ -84,9 +88,9 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				// lazy calculation, only on read
 				if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 0) { // read
 					if (realAddr->isComputed) {
-						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
+						state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
-						VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+						state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
 						memcpy(realAddr->value, realAddr->bufValue, realAddr->size);
 					}
 				} else if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) { // write
@@ -100,7 +104,7 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 		}
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
-		VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
+		state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 		if (state.changedVariable!=NULL) {
 			variable* refVariable = state.changedVariable;
 			state.changedVariable = NULL;
@@ -114,9 +118,9 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 			while (compEntry!=NULL) {
 				// save old value for computed variable
 				// TODO MODE_LAZY
-				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+				state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
 				memcpy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
-				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
+				state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 				// update computed variable depends
 				// free depends list
 				variableEntry* variableEntryToFree = NULL;
@@ -157,9 +161,9 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 				state.registerComputed = compEntry->variable;
 				compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
 				state.registerComputed = NULL;
-				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE, &oldProtect);
+				state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
 				memcpy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
-				VirtualProtect(state.reactiveMem->imPointer, state.reactiveMem->size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
+				state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 				if (compEntry->variable->triggerCallback!=NULL) {
 					compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
 				}
@@ -217,22 +221,26 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, v
 
 void* reactiveAlloc(size_t memSize) {
 	mmBlock* block = state.memAlloc(sizeof(mmBlock));
-	block->imPointer = VirtualAlloc(NULL, memSize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE|PAGE_GUARD); // imaginary pages
+	block->imPointer = state.pagesAlloc(memSize); // imaginary pages
 	block->size = memSize;
 	state.reactiveMem = block;
 	return block->imPointer;
 }
 
 void reactiveFree(void* memPointer) {
-	VirtualFree(memPointer, 0, MEM_RELEASE);
+	state.pagesFree(memPointer);
 	state.memFree(state.reactiveMem);
 	state.reactiveMem = NULL;
 }
 
-void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (*memFree)(void* pointer)) {
+void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (*memFree)(void* pointer), void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size)) {
 	state.mode = mode;
 	state.memAlloc = memAlloc;
 	state.memFree = memFree;
+	state.pagesAlloc = pagesAlloc;
+	state.pagesFree = pagesFree;
+	state.pagesProtectLock = pagesProtectLock;
+	state.pagesProtectUnlock = pagesProtectUnlock;
 	state.exHandler = AddVectoredExceptionHandler(1, imExeption);
 }
 
@@ -275,4 +283,8 @@ void freeReactivity() {
 	state.variables.tail = NULL;
 	state.memAlloc = NULL;
 	state.memFree = NULL;
+	state.pagesAlloc = NULL;
+	state.pagesFree = NULL;
+	state.pagesProtectLock = NULL;
+	state.pagesProtectUnlock = NULL;
 }

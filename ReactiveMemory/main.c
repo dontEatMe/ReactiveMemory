@@ -42,6 +42,24 @@ typedef struct someStruct {
 
 // user functions
 
+void* pagesAlloc(size_t size) {
+	return VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE|PAGE_GUARD); // imaginary pages
+}
+
+void pagesFree(void* pointer) {
+	VirtualFree(pointer, 0, MEM_RELEASE);
+}
+
+void pagesProtectLock(void* pointer, size_t size) {
+	DWORD oldProtect;
+	VirtualProtect(pointer, size, PAGE_READWRITE|PAGE_GUARD, &oldProtect);
+}
+
+void pagesProtectUnlock(void* pointer, size_t size) {
+	DWORD oldProtect;
+	VirtualProtect(pointer, size, PAGE_READWRITE, &oldProtect);
+}
+
 void computedField2(void* bufForReturnValue, void* imPointer) {
 	someComputedSubStruct* field2 = (someComputedSubStruct*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
@@ -114,7 +132,7 @@ void triggerCallback4(void* value, void* oldValue, void* imPointer) {
 int main() {
 	printf("reactive memory app\n");
 
-	initReactivity(MODE_NONLAZY, malloc, free);
+	initReactivity(MODE_NONLAZY, malloc, free, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 
 	ref(&someStruct->field1, sizeof(someStruct->field1));
