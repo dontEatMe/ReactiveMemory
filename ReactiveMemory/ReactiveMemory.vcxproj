@@ -119,6 +119,7 @@
       <CompileAs>CompileAsC</CompileAs>
       <Optimization>Disabled</Optimization>
       <LanguageStandard_C>Default</LanguageStandard_C>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -138,6 +139,7 @@
       <CompileAs>CompileAsC</CompileAs>
       <Optimization>Disabled</Optimization>
       <LanguageStandard_C>Default</LanguageStandard_C>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

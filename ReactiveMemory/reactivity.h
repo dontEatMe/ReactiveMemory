@@ -2,7 +2,7 @@
 #define REACTIVITY_H
 
 #include <stdbool.h>
-#include <string.h>
+#include <stdint.h>
 
 // TODO memory manager
 // TODO thread safety
