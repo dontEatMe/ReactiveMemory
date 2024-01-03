@@ -140,10 +140,10 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 			if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0] == 1) {
 				isWrite = true;
 			}
-			exceptionHandler(ExceptionInfo, EXCEPTION_PAGEFAULT, isWrite, (void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+			exceptionHandler((void*)ExceptionInfo, EXCEPTION_PAGEFAULT, isWrite, (void*)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		}
 	} else if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
-		exceptionHandler(ExceptionInfo, EXCEPTION_DEBUG, false, NULL);	
+		exceptionHandler((void*)ExceptionInfo, EXCEPTION_DEBUG, false, NULL);	
 	}
 	return EXCEPTION_CONTINUE_EXECUTION;
 }
@@ -151,12 +151,10 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 // tests here
 
 int main() {
-	void* exHandler;
-
 	printf("reactive memory app\n");
 
 	initReactivity(MODE_NONLAZY, malloc, free, memcpy, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap);
-	exHandler = AddVectoredExceptionHandler(1, imExeption);
+	void* exHandler = AddVectoredExceptionHandler(1, imExeption);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 
 	ref(&someStruct->field1, sizeof(someStruct->field1));
