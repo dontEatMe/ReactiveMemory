@@ -26,55 +26,6 @@ typedef enum REACTIVITY_EXCEPTION {
 	EXCEPTION_DEBUG = 1
 } REACTIVITY_EXCEPTION;
 
-typedef struct variableEntry {
-	struct variable* variable;
-	struct variableEntry* prev;
-	struct variableEntry* next;
-} variableEntry;
-
-typedef struct variable {
-	void* value;
-	void* bufValue; // buffer for value from computed callback
-	void* oldValue;
-	size_t size;
-	bool isComputed;
-	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
-	void (*triggerCallback)(void* value, void* oldValue, void* imPointer); // pointer to trigger callback
-	struct { // variables which depends on this variable
-		variableEntry* tail;
-		variableEntry* head;
-	} observers;
-	struct { // variables on which this variable depends, valid only for computed
-		variableEntry* tail;
-		variableEntry* head;
-	} depends;
-	struct variable* next; // TODO double-linked list
-} variable;
-
-typedef struct mmBlock {
-	void* imPointer;
-	size_t size;
-} mmBlock;
-
-typedef struct engineState {
-	variable* registerComputed;
-	variable* changedVariable;
-	mmBlock* reactiveMem;
-	REACTIVITY_MODE mode;
-	struct {
-		variable* tail;
-		variable* head;
-	} variables;
-	void* (*memAlloc)(size_t size);
-	void (*memFree)(void* pointer);
-	void* (*memCopy)(void* destination, const void* source, size_t size);
-	void* (*pagesAlloc)(size_t size);
-	void (*pagesFree)(void* pointer);
-	void (*pagesProtectLock)(void* pointer, size_t size);
-	void (*pagesProtectUnlock)(void* pointer, size_t size);
-	void (*enableTrap)(void* userData);
-} engineState;
-
 extern void ref(void* pointer, size_t size);
 extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer));
 extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer));

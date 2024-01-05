@@ -1,5 +1,63 @@
 #include "reactivity.h"
 
+typedef struct variableEntry {
+	struct variable* variable;
+	struct variableEntry* prev;
+	struct variableEntry* next;
+} variableEntry;
+
+typedef struct variable {
+	void* value;
+	void* bufValue; // buffer for value from computed callback
+	void* oldValue;
+	size_t size;
+	bool isComputed;
+	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
+	void (*triggerCallback)(void* value, void* oldValue, void* imPointer); // pointer to trigger callback
+	struct { // variables which depends on this variable
+		variableEntry* tail;
+		variableEntry* head;
+	} observers;
+	struct { // variables on which this variable depends, valid only for computed
+		variableEntry* tail;
+		variableEntry* head;
+	} depends;
+	struct variable* next; // TODO double-linked list
+} variable;
+
+typedef struct mmPage {
+	void* pointer;
+	struct mmPage* next;
+} mmPage;
+
+typedef struct mmBlock {
+	void* imPointer;
+	size_t size;
+	struct { // variables on which this variable depends, valid only for computed
+		mmPage* tail;
+		mmPage* head;
+	} pages;
+} mmBlock;
+
+typedef struct engineState {
+	variable* registerComputed;
+	variable* changedVariable;
+	mmBlock* reactiveMem;
+	REACTIVITY_MODE mode;
+	struct {
+		variable* tail;
+		variable* head;
+	} variables;
+	void* (*memAlloc)(size_t size);
+	void (*memFree)(void* pointer);
+	void* (*memCopy)(void* destination, const void* source, size_t size);
+	void* (*pagesAlloc)(size_t size);
+	void (*pagesFree)(void* pointer);
+	void (*pagesProtectLock)(void* pointer, size_t size);
+	void (*pagesProtectUnlock)(void* pointer, size_t size);
+	void (*enableTrap)(void* userData);
+} engineState;
+
 // engine data
 
 engineState state = {
@@ -220,7 +278,23 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, v
 
 void* reactiveAlloc(size_t memSize) {
 	mmBlock* block = state.memAlloc(sizeof(mmBlock));
-	block->imPointer = state.pagesAlloc(memSize); // imaginary pages
+	block->imPointer = state.pagesAlloc(memSize); // guard pages
+	block->pages.head = NULL;
+	block->pages.tail = NULL;
+	size_t pagesCount = (memSize+(4096-1))/4096; // 4096 is default page size for x86/x64
+	mmPage* page = NULL;
+	for (size_t i=0; i<pagesCount; i++) {
+		mmPage* prevPage = page;
+		page = state.memAlloc(sizeof(mmPage));
+		if (i==0) {
+			block->pages.head = page;
+		} else {
+			prevPage->next = page;
+		}
+		page->pointer = (size_t)block->imPointer + i*4096;
+		page->next = NULL;
+	}
+	block->pages.tail = page;
 	block->size = memSize;
 	state.reactiveMem = block;
 	return block->imPointer;
@@ -228,6 +302,14 @@ void* reactiveAlloc(size_t memSize) {
 
 void reactiveFree(void* memPointer) {
 	state.pagesFree(memPointer);
+	// free pages descriptors
+	mmPage* pageDescriptorToFree = NULL;
+	mmPage* nextPageDescriptor = state.reactiveMem->pages.head;
+	while (nextPageDescriptor!=NULL) {
+		pageDescriptorToFree = nextPageDescriptor;
+		nextPageDescriptor = nextPageDescriptor->next;
+		state.memFree(pageDescriptorToFree);
+	}
 	state.memFree(state.reactiveMem);
 	state.reactiveMem = NULL;
 }
