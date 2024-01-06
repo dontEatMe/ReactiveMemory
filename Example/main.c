@@ -39,6 +39,8 @@ typedef struct someStruct {
 	arrayElementStruct elem2;
 	arrayElementStruct elem3;
 	size_t count;
+	uint8_t pages[4097];
+	uint8_t field6;
 } someStruct;
 
 // user functions
@@ -105,6 +107,12 @@ void computedCount(void* bufForReturnValue, void* imPointer) {
 	*count = counter;
 }
 
+void computedField6(void* bufForReturnValue, void* imPointer) {
+	uint8_t* field6 = (uint8_t*)bufForReturnValue;
+	someStruct* _someStruct = (someStruct*)imPointer;
+	*field6 = _someStruct->pages[0];
+}
+
 void triggerCallback1(void* value, void* oldValue, void* imPointer) {
 	uint32_t* val = (uint32_t*)value;
 	uint32_t* oldVal = (uint32_t*)oldValue;
@@ -131,6 +139,13 @@ void triggerCallback4(void* value, void* oldValue, void* imPointer) {
 	uint64_t* oldVal = (uint64_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger4] watch value (doubleField1): %llu, oldValue (doubleField1): %llu\n", *val, *oldVal);
+}
+
+void triggerCallback5(void* value, void* oldValue, void* imPointer) {
+	uint8_t* val = (uint8_t*)value;
+	uint8_t* oldVal = (uint8_t*)oldValue;
+	someStruct* _someStruct = (someStruct*)imPointer;
+	printf("[trigger5] watch value (field6): %hhu, oldValue (field6): %hhu\n", *val, *oldVal);
 }
 
 LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
@@ -173,15 +188,24 @@ int main() {
 	someStruct->elem3.listEntry.prev = &someStruct->elem2;
 	someStruct->elem3.listEntry.next = NULL;
 	computed(&someStruct->count, sizeof(someStruct->count), computedCount);
+	ref(&someStruct->pages, sizeof(someStruct->pages));
+	computed(&someStruct->field6, sizeof(someStruct->field6), computedField6);
 
 	watch(&someStruct->count, triggerCallback3);
 	watch(&someStruct->doubleField1, triggerCallback4);
-	
+
 	printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
-	
 	someStruct->field1 = 0;
-	
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
+
+	printf("field6: %hhu\n", someStruct->field6);
+	memset(&someStruct->pages, 0x01, sizeof(someStruct->pages));
+	printf("field6: %hhu\n", someStruct->field6);
+
+	watch(&someStruct->field6, triggerCallback5);
+	// write 2 bytes on page boundary by one instruction
+	*(uint16_t*)(void*)((size_t)&someStruct->pages+(4096-((size_t)&someStruct->pages-((size_t)(&someStruct->pages)&(~4095)))-1)) = 0x0202;
+
 	printf("array elements count: %zu\n", someStruct->count);
 	printf("add second element to array\n");
 	someStruct->elem1.listEntry.next =  &someStruct->elem2;

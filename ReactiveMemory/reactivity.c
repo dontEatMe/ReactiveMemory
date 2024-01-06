@@ -26,17 +26,17 @@ typedef struct variable {
 } variable;
 
 typedef struct mmPage {
-	void* pointer;
-	struct mmPage* next;
+	struct { // variables which whole or part located on this page
+		variableEntry* tail;
+		variableEntry* head;
+	} dependents;
 } mmPage;
 
 typedef struct mmBlock {
 	void* imPointer;
 	size_t size;
-	struct { // variables on which this variable depends, valid only for computed
-		mmPage* tail;
-		mmPage* head;
-	} pages;
+	mmPage* pages; // array of mmPage
+	size_t pagesCount;
 } mmBlock;
 
 typedef struct engineState {
@@ -95,10 +95,29 @@ variable* getVariable(void* pointer) {
 	return result;
 }
 
+inline variable* getVariableFromPage(void* pointer) {
+	// get page address
+	size_t pageAddress = ((size_t)pointer&(~4095)); // 4095 decimal = 111111111111 binary
+	size_t pageIndex = (pageAddress - (size_t)state.reactiveMem->imPointer)/4096;
+	mmPage* page = &state.reactiveMem->pages[pageIndex];
+	variable* result = NULL;
+	variableEntry* variableEntryToTest = page->dependents.head;
+	while (variableEntryToTest!=NULL) {
+		variable* variableToTest = variableEntryToTest->variable;
+		// strict inequality in second case for last byte
+		if (((size_t)variableToTest->value <= (size_t)pointer) && ((size_t)pointer < (size_t)variableToTest->value+variableToTest->size)) {
+			result = variableToTest;
+			break;
+		}
+		variableEntryToTest = variableEntryToTest->next;
+	}
+	return result;
+}
+
 // if we run in kernel mode we can isolate reactive memory to kernel space to prevent write to it from user mode process
 void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWrite, void* pointer) {
 	if (exception == EXCEPTION_PAGEFAULT) {
-		variable* realAddr = getVariable(pointer);
+		variable* realAddr = getVariableFromPage(pointer);
 		if (realAddr!=NULL) {
 			if (state.registerComputed != NULL) {
 				if (!realAddr->isComputed) {
@@ -153,12 +172,14 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 					}
 				} else { // write
 					state.changedVariable = realAddr;
+					// kernel unlock only accessed page, unlock all of them (for instructions which access to data on page boundary (on two pages))
+					// TODO unlock only pages associated with variable
+					state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
 					// save old value for ref variable
 					state.memCopy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
 				}
 			}
 			state.enableTrap(userData); // trap flag for get exception after memory access instruction
-			//printf("EXCEPTION_PAGEFAULT\n");
 		}
 	}
 	else if (exception == EXCEPTION_DEBUG) {
@@ -230,7 +251,6 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 				state.memFree(compEntryToFree);
 			}
 		}
-		//printf("EXCEPTION_DEBUG\n");
 	}
 }
 
@@ -254,6 +274,28 @@ variable* createVariable(void* pointer, size_t size) {
 	} else {
 		state.variables.tail->next = var;
 		state.variables.tail = var;
+	}
+	// get mmPage's corresponding to variable
+	// get start page address
+	size_t pageAddress = ((size_t)pointer&(~4095)); // 4095 decimal = 111111111111 binary
+	size_t pageIndex = (pageAddress - (size_t)state.reactiveMem->imPointer)/4096;
+	// get last page address
+	size_t variableLastPageAddress = ((size_t)pointer + size)&(~4095); // 4095 decimal = 111111111111 binary
+	size_t variablePagesCount = 1 + (variableLastPageAddress - pageAddress)/4096;
+	for (size_t i=0; i<variablePagesCount; i++) {
+		// one variable can be linked with multiple pages
+		variableEntry* dependentEntry = state.memAlloc(sizeof(variableEntry)); // TODO check to state.memAlloc return NULL
+		dependentEntry->variable = var;
+		dependentEntry->prev = NULL;
+		dependentEntry->next = NULL;
+		if (state.reactiveMem->pages[pageIndex+i].dependents.head == NULL) {
+			state.reactiveMem->pages[pageIndex+i].dependents.head = dependentEntry;
+			state.reactiveMem->pages[pageIndex+i].dependents.tail = dependentEntry;
+		} else {
+			dependentEntry->prev = state.reactiveMem->pages[pageIndex].dependents.tail;
+			state.reactiveMem->pages[pageIndex+i].dependents.tail->next = dependentEntry;
+			state.reactiveMem->pages[pageIndex+i].dependents.tail = dependentEntry;
+		}
 	}
 	return var;
 }
@@ -279,22 +321,12 @@ void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, v
 void* reactiveAlloc(size_t memSize) {
 	mmBlock* block = state.memAlloc(sizeof(mmBlock));
 	block->imPointer = state.pagesAlloc(memSize); // guard pages
-	block->pages.head = NULL;
-	block->pages.tail = NULL;
-	size_t pagesCount = (memSize+(4096-1))/4096; // 4096 is default page size for x86/x64
-	mmPage* page = NULL;
-	for (size_t i=0; i<pagesCount; i++) {
-		mmPage* prevPage = page;
-		page = state.memAlloc(sizeof(mmPage));
-		if (i==0) {
-			block->pages.head = page;
-		} else {
-			prevPage->next = page;
-		}
-		page->pointer = (size_t)block->imPointer + i*4096;
-		page->next = NULL;
+	block->pagesCount = (memSize+(4096-1))/4096; // 4096 is default page size for x86/x64
+	block->pages = state.memAlloc(sizeof(mmPage)*block->pagesCount);
+	for (size_t i=0; i<block->pagesCount; i++) {
+		block->pages[i].dependents.head = NULL;
+		block->pages[i].dependents.tail = NULL;
 	}
-	block->pages.tail = page;
 	block->size = memSize;
 	state.reactiveMem = block;
 	return block->imPointer;
@@ -302,14 +334,22 @@ void* reactiveAlloc(size_t memSize) {
 
 void reactiveFree(void* memPointer) {
 	state.pagesFree(memPointer);
-	// free pages descriptors
-	mmPage* pageDescriptorToFree = NULL;
-	mmPage* nextPageDescriptor = state.reactiveMem->pages.head;
-	while (nextPageDescriptor!=NULL) {
-		pageDescriptorToFree = nextPageDescriptor;
-		nextPageDescriptor = nextPageDescriptor->next;
-		state.memFree(pageDescriptorToFree);
+	mmPage* mmPageToFree;
+	for (size_t i=0; i<state.reactiveMem->pagesCount; i++) {
+		// free dependents list
+		variableEntry* variableEntryToFree;
+		variableEntry* nextVariableEntry;
+		variableEntryToFree = NULL;
+		nextVariableEntry = state.reactiveMem->pages[i].dependents.head;
+		while (nextVariableEntry!=NULL) {
+			variableEntryToFree = nextVariableEntry;
+			nextVariableEntry = nextVariableEntry->next;
+			state.memFree(variableEntryToFree);
+		}
+		state.reactiveMem->pages[i].dependents.head = NULL;
+		state.reactiveMem->pages[i].dependents.tail = NULL;
 	}
+	state.memFree(state.reactiveMem->pages); // free pages descriptors
 	state.memFree(state.reactiveMem);
 	state.reactiveMem = NULL;
 }
