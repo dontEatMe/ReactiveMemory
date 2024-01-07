@@ -208,7 +208,6 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 					variableEntryToFree = nextVariableEntry;
 					nextVariableEntry = nextVariableEntry->next;
 					// find and remove it from depend variable observers list
-					variableEntry* observerVariableEntryToFree = NULL;
 					variableEntry* observerNextVariableEntry = variableEntryToFree->variable->observers.head;
 					while (observerNextVariableEntry!=NULL) {
 						if (observerNextVariableEntry->variable == compEntry->variable) {
@@ -334,7 +333,6 @@ void* reactiveAlloc(size_t memSize) {
 
 void reactiveFree(void* memPointer) {
 	state.pagesFree(memPointer);
-	mmPage* mmPageToFree;
 	for (size_t i=0; i<state.reactiveMem->pagesCount; i++) {
 		// free dependents list
 		variableEntry* variableEntryToFree;
