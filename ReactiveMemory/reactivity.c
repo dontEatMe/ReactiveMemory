@@ -165,16 +165,15 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 				// lazy calculation, only on read
 				if (!isWrite) { // read
 					if (realAddr->isComputed) {
-						state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
+						state.pagesProtectLock(realAddr->value, realAddr->size);
 						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
-						state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
+						state.pagesProtectUnlock(realAddr->value, realAddr->size);
 						state.memCopy(realAddr->value, realAddr->bufValue, realAddr->size);
 					}
 				} else { // write
 					state.changedVariable = realAddr;
 					// kernel unlock only accessed page, unlock all of them (for instructions which access to data on page boundary (on two pages))
-					// TODO unlock only pages associated with variable
-					state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
+					state.pagesProtectUnlock(realAddr->value, realAddr->size);
 					// save old value for ref variable
 					state.memCopy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
 				}
@@ -197,9 +196,9 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 			while (compEntry!=NULL) {
 				// save old value for computed variable
 				// TODO MODE_LAZY
-				state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
+				state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
 				state.memCopy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
-				state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
+				state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
 				// update computed variable depends
 				// free depends list
 				variableEntry* variableEntryToFree = NULL;
@@ -239,9 +238,9 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 				state.registerComputed = compEntry->variable;
 				compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
 				state.registerComputed = NULL;
-				state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
+				state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
 				state.memCopy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
-				state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
+				state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
 				if (compEntry->variable->triggerCallback!=NULL) {
 					compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
 				}
