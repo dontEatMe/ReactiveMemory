@@ -162,20 +162,35 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 					}
 				}
 			} else {
-				// lazy calculation, only on read
-				if (!isWrite) { // read
-					if (realAddr->isComputed) {
-						state.pagesProtectLock(realAddr->value, realAddr->size);
-						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
-						state.pagesProtectUnlock(realAddr->value, realAddr->size);
-						state.memCopy(realAddr->value, realAddr->bufValue, realAddr->size);
-					}
-				} else { // write
+				if (isWrite) {
 					state.changedVariable = realAddr;
-					// kernel unlock only accessed page, unlock all of them (for instructions which access to data on page boundary (on two pages))
+					// kernel unlock only accessed page, unlock all of them (for instructions which access to data on pages boundary (on two pages))
 					state.pagesProtectUnlock(realAddr->value, realAddr->size);
 					// save old value for ref variable
 					state.memCopy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
+				} else {
+					// lazy calculation, only on read
+					if (realAddr->isComputed) {
+						// lock all pages (not only pages for accessed varible) for prevent bug:
+						// variable1 placed on page1, variable2 placed on page2
+						// 1. execute instruction which access to data on pages boundary (on two pages)
+						// 2. #PF -> unlock page 1
+						// 3. #PF -> unlock page 2
+						// 4. calc value of computed variable from page 2 with access to variable from page 1
+						// 5. !missing #PF (page 1 unlocked)!
+						state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
+						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
+						// unlock all pages (not only pages for accessed varible) for prevent bug:
+						// variable1 placed on page1, variable2 placed on page2
+						// 1. execute instruction which access to data on pages boundary (on two pages)
+						// 2. #PF -> unlock page 1
+						// 3. #PF -> unlock page 2
+						// 4. calc value of computed variable (all pages will be locked)
+						// 5. unlock pages of variable2 (page2)
+						// 6. !execute instruction again -> #PF (page1 locked)!
+						state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
+						state.memCopy(realAddr->value, realAddr->bufValue, realAddr->size);
+					}
 				}
 			}
 			state.enableTrap(userData); // trap flag for get exception after memory access instruction

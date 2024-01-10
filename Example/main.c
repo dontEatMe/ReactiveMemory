@@ -206,7 +206,7 @@ int main() {
 	printf("field6: %hhu\n", someStruct->field6);
 
 	watch(&someStruct->field6, triggerCallback5);
-	// write 2 bytes on page boundary by one instruction
+	// write 2 bytes on pages boundary by one instruction
 	*(uint16_t*)(void*)((size_t)&someStruct->pages+(4096-((size_t)&someStruct->pages-((size_t)(&someStruct->pages)&(~4095)))-1)) = 0x0202;
 
 	printf("array elements count: %zu\n", someStruct->count);
