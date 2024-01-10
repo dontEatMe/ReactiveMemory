@@ -198,6 +198,9 @@ int main() {
 	someStruct->field1 = 0;
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
 
+	someStruct->field3 = 200;
+	printf("field3: %u\n", someStruct->field3);
+
 	printf("field6: %hhu\n", someStruct->field6);
 	memset(&someStruct->pages, 0x01, sizeof(someStruct->pages));
 	printf("field6: %hhu\n", someStruct->field6);

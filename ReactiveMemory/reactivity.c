@@ -184,69 +184,74 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 	else if (exception == EXCEPTION_DEBUG) {
 		state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 		if (state.changedVariable!=NULL) {
-			variable* refVariable = state.changedVariable;
+			variable* changedVariable = state.changedVariable;
 			state.changedVariable = NULL;
-			variableEntry* compEntryToFree = NULL;
-			variableEntry* compEntry = refVariable->observers.head;
-			refVariable->observers.head = NULL;
-			refVariable->observers.tail = NULL;
-			if (refVariable->triggerCallback!=NULL) {
-				refVariable->triggerCallback(refVariable->value, refVariable->oldValue, state.reactiveMem->imPointer);
-			}
-			while (compEntry!=NULL) {
-				// save old value for computed variable
-				// TODO MODE_LAZY
-				state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
-				state.memCopy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
-				state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
-				// update computed variable depends
-				// free depends list
-				variableEntry* variableEntryToFree = NULL;
-				variableEntry* nextVariableEntry = compEntry->variable->depends.head;
-				while (nextVariableEntry!=NULL) {
-					variableEntryToFree = nextVariableEntry;
-					nextVariableEntry = nextVariableEntry->next;
-					// find and remove it from depend variable observers list
-					variableEntry* observerNextVariableEntry = variableEntryToFree->variable->observers.head;
-					while (observerNextVariableEntry!=NULL) {
-						if (observerNextVariableEntry->variable == compEntry->variable) {
-							if (observerNextVariableEntry->prev!=NULL) {
-								observerNextVariableEntry->prev->next = observerNextVariableEntry->next;
-								if (observerNextVariableEntry->next==NULL) { // this is last element
-									variableEntryToFree->variable->observers.tail = observerNextVariableEntry->prev;
+			if (!changedVariable->isComputed) {
+				variableEntry* compEntryToFree = NULL;
+				variableEntry* compEntry = changedVariable->observers.head;
+				changedVariable->observers.head = NULL;
+				changedVariable->observers.tail = NULL;
+				if (changedVariable->triggerCallback!=NULL) {
+					changedVariable->triggerCallback(changedVariable->value, changedVariable->oldValue, state.reactiveMem->imPointer);
+				}
+				while (compEntry!=NULL) {
+					// save old value for computed variable
+					// TODO MODE_LAZY
+					state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
+					state.memCopy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
+					state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
+					// update computed variable depends
+					// free depends list
+					variableEntry* variableEntryToFree = NULL;
+					variableEntry* nextVariableEntry = compEntry->variable->depends.head;
+					while (nextVariableEntry!=NULL) {
+						variableEntryToFree = nextVariableEntry;
+						nextVariableEntry = nextVariableEntry->next;
+						// find and remove it from depend variable observers list
+						variableEntry* observerNextVariableEntry = variableEntryToFree->variable->observers.head;
+						while (observerNextVariableEntry!=NULL) {
+							if (observerNextVariableEntry->variable == compEntry->variable) {
+								if (observerNextVariableEntry->prev!=NULL) {
+									observerNextVariableEntry->prev->next = observerNextVariableEntry->next;
+									if (observerNextVariableEntry->next==NULL) { // this is last element
+										variableEntryToFree->variable->observers.tail = observerNextVariableEntry->prev;
+									}
+								} else { // this is first element
+									if (observerNextVariableEntry->next!=NULL) {
+										variableEntryToFree->variable->observers.head = observerNextVariableEntry->next;
+									} else { // only one element
+										variableEntryToFree->variable->observers.head = NULL;
+										variableEntryToFree->variable->observers.tail = NULL;
+									}
 								}
-							} else { // this is first element
 								if (observerNextVariableEntry->next!=NULL) {
-									variableEntryToFree->variable->observers.head = observerNextVariableEntry->next;
-								} else { // only one element
-									variableEntryToFree->variable->observers.head = NULL;
-									variableEntryToFree->variable->observers.tail = NULL;
+									observerNextVariableEntry->next->prev = observerNextVariableEntry->prev;
 								}
+								state.memFree(observerNextVariableEntry);
+								break;
 							}
-							if (observerNextVariableEntry->next!=NULL) {
-								observerNextVariableEntry->next->prev = observerNextVariableEntry->prev;
-							}
-							state.memFree(observerNextVariableEntry);
-							break;
+							observerNextVariableEntry = observerNextVariableEntry->next;
 						}
-						observerNextVariableEntry = observerNextVariableEntry->next;
+						state.memFree(variableEntryToFree);
 					}
-					state.memFree(variableEntryToFree);
+					compEntry->variable->depends.head = NULL;
+					compEntry->variable->depends.tail = NULL;
+					state.registerComputed = compEntry->variable;
+					compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
+					state.registerComputed = NULL;
+					state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
+					state.memCopy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
+					state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
+					if (compEntry->variable->triggerCallback!=NULL) {
+						compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
+					}
+					compEntryToFree = compEntry;
+					compEntry = compEntry->next;
+					state.memFree(compEntryToFree);
 				}
-				compEntry->variable->depends.head = NULL;
-				compEntry->variable->depends.tail = NULL;
-				state.registerComputed = compEntry->variable;
-				compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
-				state.registerComputed = NULL;
-				state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
-				state.memCopy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
-				state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
-				if (compEntry->variable->triggerCallback!=NULL) {
-					compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
-				}
-				compEntryToFree = compEntry;
-				compEntry = compEntry->next;
-				state.memFree(compEntryToFree);
+			} else {
+				// computed value has been changed, recalc it
+				changedVariable->callback(changedVariable->bufValue, state.reactiveMem->imPointer);
 			}
 		}
 	}
