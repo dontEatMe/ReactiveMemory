@@ -29,6 +29,8 @@ typedef struct someComputedSubStruct {
 } someComputedSubStruct;
 
 typedef struct someStruct {
+	uint8_t page1[4096];
+	uint8_t page2[4096];
 	uint32_t field1;
 	uint64_t doubleField1;
 	someComputedSubStruct field2;
@@ -168,10 +170,12 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 int main() {
 	printf("reactive memory app\n");
 
-	initReactivity(MODE_NONLAZY, malloc, free, memcpy, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap);
+	initReactivity(MODE_NONLAZY, malloc, realloc, free, memcpy, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap);
 	void* exHandler = AddVectoredExceptionHandler(1, imExeption);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
-
+	
+	ref(&someStruct->page1, sizeof(someStruct->page1));
+	ref(&someStruct->page2, sizeof(someStruct->page2));
 	ref(&someStruct->field1, sizeof(someStruct->field1));
 	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1);
 	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
@@ -207,7 +211,7 @@ int main() {
 
 	watch(&someStruct->field6, triggerCallback5);
 	// write 2 bytes on pages boundary by one instruction
-	*(uint16_t*)(void*)((size_t)&someStruct->pages+(4096-((size_t)&someStruct->pages-((size_t)(&someStruct->pages)&(~4095)))-1)) = 0x0202;
+	*(uint16_t*)(void*)((size_t)&someStruct->pages+(4096-((size_t)&someStruct->pages-((size_t)(&someStruct->pages)&(~0xfff)))-1)) = 0x0202;
 
 	printf("array elements count: %zu\n", someStruct->count);
 	printf("add second element to array\n");
@@ -225,6 +229,10 @@ int main() {
 	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
 	printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
 	printf("array elements count: %zu\n", someStruct->count);
+
+	// write 2 bytes on pages boundary by one instruction into two variables
+	*(uint16_t*)(void*)((size_t)&someStruct->page1+(4096-1)) = 0x1234;
+
 
 	reactiveFree(someStruct);
 

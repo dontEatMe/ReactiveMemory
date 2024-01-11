@@ -41,7 +41,8 @@ typedef struct mmBlock {
 
 typedef struct engineState {
 	variable* registerComputed;
-	variable* changedVariable;
+	variable** changedVariables; // array of variable*
+	size_t changedVariablesCount;
 	mmBlock* reactiveMem;
 	REACTIVITY_MODE mode;
 	struct {
@@ -49,6 +50,7 @@ typedef struct engineState {
 		variable* head;
 	} variables;
 	void* (*memAlloc)(size_t size);
+	void* (*memRealloc)(void* pointer, size_t size);
 	void (*memFree)(void* pointer);
 	void* (*memCopy)(void* destination, const void* source, size_t size);
 	void* (*pagesAlloc)(size_t size);
@@ -62,7 +64,8 @@ typedef struct engineState {
 
 engineState state = {
 	.registerComputed = NULL, // TODO mutex
-	.changedVariable = NULL,
+	.changedVariables = NULL,
+	.changedVariablesCount = 0,
 	.reactiveMem = NULL,
 	.mode = MODE_LAZY,
 	.variables = {
@@ -70,6 +73,7 @@ engineState state = {
 		.head = NULL
 	},
 	.memAlloc = NULL,
+	.memRealloc = NULL,
 	.memFree = NULL,
 	.memCopy = NULL,
 	.pagesAlloc = NULL,
@@ -97,7 +101,7 @@ variable* getVariable(void* pointer) {
 
 inline variable* getVariableFromPage(void* pointer) {
 	// get page address
-	size_t pageAddress = ((size_t)pointer&(~4095)); // 4095 decimal = 111111111111 binary
+	size_t pageAddress = ((size_t)pointer&(~0xfff));
 	size_t pageIndex = (pageAddress - (size_t)state.reactiveMem->imPointer)/4096;
 	mmPage* page = &state.reactiveMem->pages[pageIndex];
 	variable* result = NULL;
@@ -163,11 +167,14 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 				}
 			} else {
 				if (isWrite) {
-					state.changedVariable = realAddr;
+					state.changedVariables = state.memRealloc(state.changedVariables, (state.changedVariablesCount+1+1)*sizeof(variable*));
+					state.changedVariables[state.changedVariablesCount] = realAddr;
+					state.changedVariablesCount++;
+					state.changedVariables[state.changedVariablesCount] = NULL;
 					// kernel unlock only accessed page, unlock all of them (for instructions which access to data on pages boundary (on two pages))
 					state.pagesProtectUnlock(realAddr->value, realAddr->size);
 					// save old value for ref variable
-					state.memCopy(state.changedVariable->oldValue, state.changedVariable->value, state.changedVariable->size);
+					state.memCopy(state.changedVariables[state.changedVariablesCount-1]->oldValue, state.changedVariables[state.changedVariablesCount-1]->value, state.changedVariables[state.changedVariablesCount-1]->size);
 				} else {
 					// lazy calculation, only on read
 					if (realAddr->isComputed) {
@@ -176,7 +183,7 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 						// 1. execute instruction which access to data on pages boundary (on two pages)
 						// 2. #PF -> unlock page 1
 						// 3. #PF -> unlock page 2
-						// 4. calc value of computed variable from page 2 with access to variable from page 1
+						// 4. calc value of computed variable2 with access to variable from page 1
 						// 5. !missing #PF (page 1 unlocked)!
 						state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
@@ -185,7 +192,7 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 						// 1. execute instruction which access to data on pages boundary (on two pages)
 						// 2. #PF -> unlock page 1
 						// 3. #PF -> unlock page 2
-						// 4. calc value of computed variable (all pages will be locked)
+						// 4. calc value of computed variable2 (all pages will be locked)
 						// 5. unlock pages of variable2 (page2)
 						// 6. !execute instruction again -> #PF (page1 locked)!
 						state.pagesProtectUnlock(state.reactiveMem->imPointer, state.reactiveMem->size);
@@ -198,75 +205,75 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 	}
 	else if (exception == EXCEPTION_DEBUG) {
 		state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
-		if (state.changedVariable!=NULL) {
-			variable* changedVariable = state.changedVariable;
-			state.changedVariable = NULL;
-			if (!changedVariable->isComputed) {
-				variableEntry* compEntryToFree = NULL;
-				variableEntry* compEntry = changedVariable->observers.head;
-				changedVariable->observers.head = NULL;
-				changedVariable->observers.tail = NULL;
-				if (changedVariable->triggerCallback!=NULL) {
-					changedVariable->triggerCallback(changedVariable->value, changedVariable->oldValue, state.reactiveMem->imPointer);
-				}
-				while (compEntry!=NULL) {
-					// save old value for computed variable
-					// TODO MODE_LAZY
-					state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
-					state.memCopy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
-					state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
-					// update computed variable depends
-					// free depends list
-					variableEntry* variableEntryToFree = NULL;
-					variableEntry* nextVariableEntry = compEntry->variable->depends.head;
-					while (nextVariableEntry!=NULL) {
-						variableEntryToFree = nextVariableEntry;
-						nextVariableEntry = nextVariableEntry->next;
-						// find and remove it from depend variable observers list
-						variableEntry* observerNextVariableEntry = variableEntryToFree->variable->observers.head;
-						while (observerNextVariableEntry!=NULL) {
-							if (observerNextVariableEntry->variable == compEntry->variable) {
-								if (observerNextVariableEntry->prev!=NULL) {
-									observerNextVariableEntry->prev->next = observerNextVariableEntry->next;
-									if (observerNextVariableEntry->next==NULL) { // this is last element
-										variableEntryToFree->variable->observers.tail = observerNextVariableEntry->prev;
+		if (state.changedVariablesCount>0) {
+			size_t changedVariablesCount = state.changedVariablesCount;
+			state.changedVariablesCount = 0;
+			for (size_t i=0; i<changedVariablesCount; i++) {
+				variable* changedVariable = state.changedVariables[i];
+				if (!changedVariable->isComputed) {
+					variableEntry* compEntryToFree = NULL;
+					variableEntry* compEntry = changedVariable->observers.head;
+					changedVariable->observers.head = NULL;
+					changedVariable->observers.tail = NULL;
+					if (changedVariable->triggerCallback!=NULL) {
+						changedVariable->triggerCallback(changedVariable->value, changedVariable->oldValue, state.reactiveMem->imPointer);
+					}
+					while (compEntry!=NULL) {
+						// save old value for computed variable
+						// TODO MODE_LAZY
+						state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
+						state.memCopy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
+						state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
+						// update computed variable depends
+						// free depends list
+						variableEntry* variableEntryToFree = NULL;
+						variableEntry* nextVariableEntry = compEntry->variable->depends.head;
+						while (nextVariableEntry!=NULL) {
+							variableEntryToFree = nextVariableEntry;
+							nextVariableEntry = nextVariableEntry->next;
+							// find and remove it from depend variable observers list
+							variableEntry* observerNextVariableEntry = variableEntryToFree->variable->observers.head;
+							while (observerNextVariableEntry!=NULL) {
+								if (observerNextVariableEntry->variable == compEntry->variable) {
+									if (observerNextVariableEntry->prev!=NULL) {
+										observerNextVariableEntry->prev->next = observerNextVariableEntry->next;
+										if (observerNextVariableEntry->next==NULL) { // this is last element
+											variableEntryToFree->variable->observers.tail = observerNextVariableEntry->prev;
+										}
+									} else { // this is first element
+										if (observerNextVariableEntry->next!=NULL) {
+											variableEntryToFree->variable->observers.head = observerNextVariableEntry->next;
+										} else { // only one element
+											variableEntryToFree->variable->observers.head = NULL;
+											variableEntryToFree->variable->observers.tail = NULL;
+										}
 									}
-								} else { // this is first element
 									if (observerNextVariableEntry->next!=NULL) {
-										variableEntryToFree->variable->observers.head = observerNextVariableEntry->next;
-									} else { // only one element
-										variableEntryToFree->variable->observers.head = NULL;
-										variableEntryToFree->variable->observers.tail = NULL;
+										observerNextVariableEntry->next->prev = observerNextVariableEntry->prev;
 									}
+									state.memFree(observerNextVariableEntry);
+									break;
 								}
-								if (observerNextVariableEntry->next!=NULL) {
-									observerNextVariableEntry->next->prev = observerNextVariableEntry->prev;
-								}
-								state.memFree(observerNextVariableEntry);
-								break;
+								observerNextVariableEntry = observerNextVariableEntry->next;
 							}
-							observerNextVariableEntry = observerNextVariableEntry->next;
+							state.memFree(variableEntryToFree);
 						}
-						state.memFree(variableEntryToFree);
+						compEntry->variable->depends.head = NULL;
+						compEntry->variable->depends.tail = NULL;
+						state.registerComputed = compEntry->variable;
+						compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
+						state.registerComputed = NULL;
+						state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
+						state.memCopy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
+						state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
+						if (compEntry->variable->triggerCallback!=NULL) {
+							compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
+						}
+						compEntryToFree = compEntry;
+						compEntry = compEntry->next;
+						state.memFree(compEntryToFree);
 					}
-					compEntry->variable->depends.head = NULL;
-					compEntry->variable->depends.tail = NULL;
-					state.registerComputed = compEntry->variable;
-					compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
-					state.registerComputed = NULL;
-					state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
-					state.memCopy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
-					state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
-					if (compEntry->variable->triggerCallback!=NULL) {
-						compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
-					}
-					compEntryToFree = compEntry;
-					compEntry = compEntry->next;
-					state.memFree(compEntryToFree);
 				}
-			} else {
-				// computed value has been changed, recalc it
-				changedVariable->callback(changedVariable->bufValue, state.reactiveMem->imPointer);
 			}
 		}
 	}
@@ -295,10 +302,10 @@ variable* createVariable(void* pointer, size_t size) {
 	}
 	// get mmPage's corresponding to variable
 	// get start page address
-	size_t pageAddress = ((size_t)pointer&(~4095)); // 4095 decimal = 111111111111 binary
+	size_t pageAddress = ((size_t)pointer&(~0xfff));
 	size_t pageIndex = (pageAddress - (size_t)state.reactiveMem->imPointer)/4096;
 	// get last page address
-	size_t variableLastPageAddress = ((size_t)pointer + size)&(~4095); // 4095 decimal = 111111111111 binary
+	size_t variableLastPageAddress = ((size_t)pointer + size)&(~0xfff);
 	size_t variablePagesCount = 1 + (variableLastPageAddress - pageAddress)/4096;
 	for (size_t i=0; i<variablePagesCount; i++) {
 		// one variable can be linked with multiple pages
@@ -371,9 +378,10 @@ void reactiveFree(void* memPointer) {
 	state.reactiveMem = NULL;
 }
 
-void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (*memFree)(void* pointer), void* (*memCopy)(void* destination, const void* source, size_t size), void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
+void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void* (*memRealloc)(void* pointer, size_t size), void (*memFree)(void* pointer), void* (*memCopy)(void* destination, const void* source, size_t size), void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
 	state.mode = mode;
 	state.memAlloc = memAlloc;
+	state.memRealloc = memRealloc;
 	state.memFree = memFree;
 	state.memCopy = memCopy;
 	state.pagesAlloc = pagesAlloc;
@@ -381,6 +389,9 @@ void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void (
 	state.pagesProtectLock = pagesProtectLock;
 	state.pagesProtectUnlock = pagesProtectUnlock;
 	state.enableTrap = enableTrap;
+	state.changedVariables = memAlloc(sizeof(variable*));
+	state.changedVariables[0] = NULL; // last element must be nullptr (free memory prevention)
+	state.changedVariablesCount = 0;
 }
 
 void freeReactivity() {
@@ -418,7 +429,9 @@ void freeReactivity() {
 	}
 	state.variables.head = NULL;
 	state.variables.tail = NULL;
+	state.memFree(state.changedVariables);
 	state.memAlloc = NULL;
+	state.memRealloc = NULL;
 	state.memFree = NULL;
 	state.memCopy = NULL;
 	state.pagesAlloc = NULL;
