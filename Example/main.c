@@ -174,26 +174,26 @@ int main() {
 	void* exHandler = AddVectoredExceptionHandler(1, imExeption);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 	
-	ref(&someStruct->page1, sizeof(someStruct->page1));
-	ref(&someStruct->page2, sizeof(someStruct->page2));
-	ref(&someStruct->field1, sizeof(someStruct->field1));
-	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1);
-	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
-	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3);
-	computed(&someStruct->field5, sizeof(someStruct->field5), computedField5);
-	ref(&someStruct->field4, sizeof(someStruct->field4));
-	ref(&someStruct->elem1, sizeof(someStruct->elem1));
-	ref(&someStruct->elem2, sizeof(someStruct->elem2));
-	ref(&someStruct->elem3, sizeof(someStruct->elem3));
+	ref(&someStruct->page1, sizeof(someStruct->page1), NULL);
+	ref(&someStruct->page2, sizeof(someStruct->page2), NULL);
+	ref(&someStruct->field1, sizeof(someStruct->field1), NULL);
+	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1, NULL);
+	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2, NULL);
+	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3, NULL);
+	computed(&someStruct->field5, sizeof(someStruct->field5), computedField5, NULL);
+	ref(&someStruct->field4, sizeof(someStruct->field4), NULL);
+	ref(&someStruct->elem1, sizeof(someStruct->elem1), NULL);
+	ref(&someStruct->elem2, sizeof(someStruct->elem2), NULL);
+	ref(&someStruct->elem3, sizeof(someStruct->elem3), NULL);
 	someStruct->elem1.listEntry.prev = NULL;
 	someStruct->elem1.listEntry.next = NULL; // will be changed
 	someStruct->elem2.listEntry.prev = &someStruct->elem1;
 	someStruct->elem2.listEntry.next = NULL; // will be changed
 	someStruct->elem3.listEntry.prev = &someStruct->elem2;
 	someStruct->elem3.listEntry.next = NULL;
-	computed(&someStruct->count, sizeof(someStruct->count), computedCount);
-	ref(&someStruct->pages, sizeof(someStruct->pages));
-	computed(&someStruct->field6, sizeof(someStruct->field6), computedField6);
+	computed(&someStruct->count, sizeof(someStruct->count), computedCount, NULL);
+	ref(&someStruct->pages, sizeof(someStruct->pages), NULL);
+	computed(&someStruct->field6, sizeof(someStruct->field6), computedField6, NULL);
 
 	watch(&someStruct->count, triggerCallback3);
 	watch(&someStruct->doubleField1, triggerCallback4);

@@ -14,6 +14,7 @@ typedef struct variable {
 	bool isComputed;
 	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
 	void (*triggerCallback)(void* value, void* oldValue, void* imPointer); // pointer to trigger callback
+	void* userData;
 	struct { // variables which depends on this variable
 		variableEntry* tail;
 		variableEntry* head;
@@ -279,11 +280,12 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 	}
 }
 
-variable* createVariable(void* pointer, size_t size) {
+variable* createVariable(void* pointer, size_t size, void* userData) {
 	variable* var = state.memAlloc(sizeof(variable));
 	var->isComputed = false;
 	var->callback = NULL;
 	var->triggerCallback = NULL;
+	var->userData = userData;
 	var->observers.head = NULL;
 	var->observers.tail = NULL;
 	var->depends.head = NULL;
@@ -325,12 +327,12 @@ variable* createVariable(void* pointer, size_t size) {
 	return var;
 }
 
-void ref(void* pointer, size_t size) {
-	variable* var = createVariable(pointer, size);
+void ref(void* pointer, size_t size, void* userData) {
+	variable* var = createVariable(pointer, size, userData);
 }
 
-void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer)) {
-	variable* var = createVariable(pointer, size);
+void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer), void* userData) {
+	variable* var = createVariable(pointer, size, userData);
 	var->isComputed = true;
 	var->callback = callback;
 	state.registerComputed = var;

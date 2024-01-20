@@ -26,8 +26,8 @@ typedef enum REACTIVITY_EXCEPTION {
 	EXCEPTION_DEBUG = 1
 } REACTIVITY_EXCEPTION;
 
-extern void ref(void* pointer, size_t size);
-extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer));
+extern void ref(void* pointer, size_t size, void* userData);
+extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer), void* userData);
 extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer));
 extern void* reactiveAlloc(size_t memSize);
 extern void reactiveFree(void* memPointer);
