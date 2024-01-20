@@ -12,8 +12,8 @@ typedef struct variable {
 	void* oldValue;
 	size_t size;
 	bool isComputed;
-	void (*callback)(void* bufForReturnValue, void* imPointer); // pointer to compute callback
-	void (*triggerCallback)(void* value, void* oldValue, void* imPointer); // pointer to trigger callback
+	void (*callback)(void* bufForReturnValue, void* imPointer, void* userData); // pointer to compute callback
+	void (*triggerCallback)(void* value, void* oldValue, void* imPointer, void* userData); // pointer to trigger callback
 	void* userData;
 	struct { // variables which depends on this variable
 		variableEntry* tail;
@@ -187,7 +187,7 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 						// 4. calc value of computed variable2 with access to variable from page 1
 						// 5. !missing #PF (page 1 unlocked)!
 						state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
-						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer);
+						realAddr->callback(realAddr->bufValue, state.reactiveMem->imPointer, realAddr->userData);
 						// unlock all pages (not only pages for accessed varible) for prevent bug:
 						// variable1 placed on page1, variable2 placed on page2
 						// 1. execute instruction which access to data on pages boundary (on two pages)
@@ -217,7 +217,7 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 					changedVariable->observers.head = NULL;
 					changedVariable->observers.tail = NULL;
 					if (changedVariable->triggerCallback!=NULL) {
-						changedVariable->triggerCallback(changedVariable->value, changedVariable->oldValue, state.reactiveMem->imPointer);
+						changedVariable->triggerCallback(changedVariable->value, changedVariable->oldValue, state.reactiveMem->imPointer, changedVariable->userData);
 					}
 					while (compEntry!=NULL) {
 						// save old value for computed variable
@@ -262,13 +262,13 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 						compEntry->variable->depends.head = NULL;
 						compEntry->variable->depends.tail = NULL;
 						state.registerComputed = compEntry->variable;
-						compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer);
+						compEntry->variable->callback(compEntry->variable->bufValue, state.reactiveMem->imPointer, compEntry->variable->userData);
 						state.registerComputed = NULL;
 						state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
 						state.memCopy(compEntry->variable->value, compEntry->variable->bufValue, compEntry->variable->size);
 						state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
 						if (compEntry->variable->triggerCallback!=NULL) {
-							compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer);
+							compEntry->variable->triggerCallback(compEntry->variable->value, compEntry->variable->oldValue, state.reactiveMem->imPointer, compEntry->variable->userData);
 						}
 						compEntryToFree = compEntry;
 						compEntry = compEntry->next;
@@ -331,16 +331,16 @@ void ref(void* pointer, size_t size, void* userData) {
 	variable* var = createVariable(pointer, size, userData);
 }
 
-void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer), void* userData) {
+void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer, void* userData), void* userData) {
 	variable* var = createVariable(pointer, size, userData);
 	var->isComputed = true;
 	var->callback = callback;
 	state.registerComputed = var;
-	var->callback(var->bufValue, state.reactiveMem->imPointer); // call computed callback for #PF and enum depends for computed and observers for refs in #PF handler routine
+	var->callback(var->bufValue, state.reactiveMem->imPointer, var->userData); // call computed callback for #PF and enum depends for computed and observers for refs in #PF handler routine
 	state.registerComputed = NULL;
 }
 
-void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer)) {
+void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer, void* userData)) {
 	variable* variable = getVariable(pointer);
 	variable->triggerCallback = triggerCallback;
 }

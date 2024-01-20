@@ -27,8 +27,8 @@ typedef enum REACTIVITY_EXCEPTION {
 } REACTIVITY_EXCEPTION;
 
 extern void ref(void* pointer, size_t size, void* userData);
-extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer), void* userData);
-extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer));
+extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer, void* userData), void* userData);
+extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer, void* userDatas));
 extern void* reactiveAlloc(size_t memSize);
 extern void reactiveFree(void* memPointer);
 extern void initReactivity(REACTIVITY_MODE mode, void* (*memAlloc)(size_t size), void* (*memRealloc)(void* pointer, size_t size), void (*memFree)(void* pointer), void* (*memCopy)(void* destination, const void* source, size_t size), void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData));

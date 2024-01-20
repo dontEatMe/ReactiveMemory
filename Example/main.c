@@ -70,7 +70,7 @@ void enableTrap(void* userData) {
 	ExceptionInfo->ContextRecord->EFlags |= 0x00000100;
 }
 
-void computedField2(void* bufForReturnValue, void* imPointer) {
+void computedField2(void* bufForReturnValue, void* imPointer, void* userData) {
 	someComputedSubStruct* field2 = (someComputedSubStruct*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	field2->field1 = 1;
@@ -78,25 +78,25 @@ void computedField2(void* bufForReturnValue, void* imPointer) {
 	field2->field3 = 3;
 }
 
-void computedField3(void* bufForReturnValue, void* imPointer) {
+void computedField3(void* bufForReturnValue, void* imPointer, void* userData) {
 	uint32_t* field3 = (uint32_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field3 = _someStruct->field2.field2 + _someStruct->field1;
 }
 
-void computedDoubleField1(void* bufForReturnValue, void* imPointer) {
+void computedDoubleField1(void* bufForReturnValue, void* imPointer, void* userData) {
 	uint64_t* doubleField1 = (uint64_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*doubleField1 = _someStruct->field1 + _someStruct->field1;
 }
 
-void computedField5(void* bufForReturnValue, void* imPointer) {
+void computedField5(void* bufForReturnValue, void* imPointer, void* userData) {
 	uint64_t* field5 = (uint64_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field5 = _someStruct->field3 + _someStruct->field2.field2;
 }
 
-void computedCount(void* bufForReturnValue, void* imPointer) {
+void computedCount(void* bufForReturnValue, void* imPointer, void* userData) {
 	size_t* count = (size_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	size_t counter = 0;
@@ -109,41 +109,41 @@ void computedCount(void* bufForReturnValue, void* imPointer) {
 	*count = counter;
 }
 
-void computedField6(void* bufForReturnValue, void* imPointer) {
+void computedField6(void* bufForReturnValue, void* imPointer, void* userData) {
 	uint8_t* field6 = (uint8_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field6 = _someStruct->pages[0];
 }
 
-void triggerCallback1(void* value, void* oldValue, void* imPointer) {
+void triggerCallback1(void* value, void* oldValue, void* imPointer, void* userData) {
 	uint32_t* val = (uint32_t*)value;
 	uint32_t* oldVal = (uint32_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger1] watch value (field3): %u, field3 value: %u, field1 value: %u, oldValue (field3): %u\n", *val, _someStruct->field3, _someStruct->field1, *oldVal);
 }
 
-void triggerCallback2(void* value, void* oldValue, void* imPointer) {
+void triggerCallback2(void* value, void* oldValue, void* imPointer, void* userData) {
 	someSubStruct* val = (someSubStruct*)value;
 	someSubStruct* oldVal = (someSubStruct*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger2] watch value (field4.field3): %u, field4.field3 value: %u, field1 value: %u, oldValue (field4.field3): %u\n", val->field3, _someStruct->field4.field3, _someStruct->field1, oldVal->field3);
 }
 
-void triggerCallback3(void* value, void* oldValue, void* imPointer) {
+void triggerCallback3(void* value, void* oldValue, void* imPointer, void* userData) {
 	size_t* val = (size_t*)value;
 	size_t* oldVal = (size_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger3] watch value (count): %zu, oldValue (count): %zu\n", *val, *oldVal);
 }
 
-void triggerCallback4(void* value, void* oldValue, void* imPointer) {
+void triggerCallback4(void* value, void* oldValue, void* imPointer, void* userData) {
 	uint64_t* val = (uint64_t*)value;
 	uint64_t* oldVal = (uint64_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger4] watch value (doubleField1): %llu, oldValue (doubleField1): %llu\n", *val, *oldVal);
 }
 
-void triggerCallback5(void* value, void* oldValue, void* imPointer) {
+void triggerCallback5(void* value, void* oldValue, void* imPointer, void* userData) {
 	uint8_t* val = (uint8_t*)value;
 	uint8_t* oldVal = (uint8_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
