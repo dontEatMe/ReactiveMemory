@@ -70,7 +70,7 @@ void enableTrap(void* userData) {
 	ExceptionInfo->ContextRecord->EFlags |= 0x00000100;
 }
 
-void computedField2(void* bufForReturnValue, void* imPointer, void* userData) {
+void computedField2(void* bufForReturnValue, void* imPointer) {
 	someComputedSubStruct* field2 = (someComputedSubStruct*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	field2->field1 = 1;
@@ -78,25 +78,25 @@ void computedField2(void* bufForReturnValue, void* imPointer, void* userData) {
 	field2->field3 = 3;
 }
 
-void computedField3(void* bufForReturnValue, void* imPointer, void* userData) {
+void computedField3(void* bufForReturnValue, void* imPointer) {
 	uint32_t* field3 = (uint32_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field3 = _someStruct->field2.field2 + _someStruct->field1;
 }
 
-void computedDoubleField1(void* bufForReturnValue, void* imPointer, void* userData) {
+void computedDoubleField1(void* bufForReturnValue, void* imPointer) {
 	uint64_t* doubleField1 = (uint64_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*doubleField1 = _someStruct->field1 + _someStruct->field1;
 }
 
-void computedField5(void* bufForReturnValue, void* imPointer, void* userData) {
+void computedField5(void* bufForReturnValue, void* imPointer) {
 	uint64_t* field5 = (uint64_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field5 = _someStruct->field3 + _someStruct->field2.field2;
 }
 
-void computedCount(void* bufForReturnValue, void* imPointer, void* userData) {
+void computedCount(void* bufForReturnValue, void* imPointer) {
 	size_t* count = (size_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	size_t counter = 0;
@@ -109,41 +109,41 @@ void computedCount(void* bufForReturnValue, void* imPointer, void* userData) {
 	*count = counter;
 }
 
-void computedField6(void* bufForReturnValue, void* imPointer, void* userData) {
+void computedField6(void* bufForReturnValue, void* imPointer) {
 	uint8_t* field6 = (uint8_t*)bufForReturnValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	*field6 = _someStruct->pages[0];
 }
 
-void triggerCallback1(void* value, void* oldValue, void* imPointer, void* userData) {
+void triggerCallback1(void* value, void* oldValue, void* imPointer) {
 	uint32_t* val = (uint32_t*)value;
 	uint32_t* oldVal = (uint32_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger1] watch value (field3): %u, field3 value: %u, field1 value: %u, oldValue (field3): %u\n", *val, _someStruct->field3, _someStruct->field1, *oldVal);
 }
 
-void triggerCallback2(void* value, void* oldValue, void* imPointer, void* userData) {
+void triggerCallback2(void* value, void* oldValue, void* imPointer) {
 	someSubStruct* val = (someSubStruct*)value;
 	someSubStruct* oldVal = (someSubStruct*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger2] watch value (field4.field3): %u, field4.field3 value: %u, field1 value: %u, oldValue (field4.field3): %u\n", val->field3, _someStruct->field4.field3, _someStruct->field1, oldVal->field3);
 }
 
-void triggerCallback3(void* value, void* oldValue, void* imPointer, void* userData) {
+void triggerCallback3(void* value, void* oldValue, void* imPointer) {
 	size_t* val = (size_t*)value;
 	size_t* oldVal = (size_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger3] watch value (count): %zu, oldValue (count): %zu\n", *val, *oldVal);
 }
 
-void triggerCallback4(void* value, void* oldValue, void* imPointer, void* userData) {
+void triggerCallback4(void* value, void* oldValue, void* imPointer) {
 	uint64_t* val = (uint64_t*)value;
 	uint64_t* oldVal = (uint64_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
 	printf("[trigger4] watch value (doubleField1): %llu, oldValue (doubleField1): %llu\n", *val, *oldVal);
 }
 
-void triggerCallback5(void* value, void* oldValue, void* imPointer, void* userData) {
+void triggerCallback5(void* value, void* oldValue, void* imPointer) {
 	uint8_t* val = (uint8_t*)value;
 	uint8_t* oldVal = (uint8_t*)oldValue;
 	someStruct* _someStruct = (someStruct*)imPointer;
@@ -170,30 +170,30 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 int main() {
 	printf("reactive memory app\n");
 
-	initReactivity(MODE_NONLAZY, malloc, realloc, free, memcpy, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap);
+	initReactivity(MODE_NONLAZY, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap);
 	void* exHandler = AddVectoredExceptionHandler(1, imExeption);
 	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 	
-	ref(&someStruct->page1, sizeof(someStruct->page1), NULL);
-	ref(&someStruct->page2, sizeof(someStruct->page2), NULL);
-	ref(&someStruct->field1, sizeof(someStruct->field1), NULL);
-	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1, NULL);
-	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2, NULL);
-	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3, NULL);
-	computed(&someStruct->field5, sizeof(someStruct->field5), computedField5, NULL);
-	ref(&someStruct->field4, sizeof(someStruct->field4), NULL);
-	ref(&someStruct->elem1, sizeof(someStruct->elem1), NULL);
-	ref(&someStruct->elem2, sizeof(someStruct->elem2), NULL);
-	ref(&someStruct->elem3, sizeof(someStruct->elem3), NULL);
+	ref(&someStruct->page1, sizeof(someStruct->page1));
+	ref(&someStruct->page2, sizeof(someStruct->page2));
+	ref(&someStruct->field1, sizeof(someStruct->field1));
+	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1);
+	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
+	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3);
+	computed(&someStruct->field5, sizeof(someStruct->field5), computedField5);
+	ref(&someStruct->field4, sizeof(someStruct->field4));
+	ref(&someStruct->elem1, sizeof(someStruct->elem1));
+	ref(&someStruct->elem2, sizeof(someStruct->elem2));
+	ref(&someStruct->elem3, sizeof(someStruct->elem3));
 	someStruct->elem1.listEntry.prev = NULL;
 	someStruct->elem1.listEntry.next = NULL; // will be changed
 	someStruct->elem2.listEntry.prev = &someStruct->elem1;
 	someStruct->elem2.listEntry.next = NULL; // will be changed
 	someStruct->elem3.listEntry.prev = &someStruct->elem2;
 	someStruct->elem3.listEntry.next = NULL;
-	computed(&someStruct->count, sizeof(someStruct->count), computedCount, NULL);
-	ref(&someStruct->pages, sizeof(someStruct->pages), NULL);
-	computed(&someStruct->field6, sizeof(someStruct->field6), computedField6, NULL);
+	computed(&someStruct->count, sizeof(someStruct->count), computedCount);
+	ref(&someStruct->pages, sizeof(someStruct->pages));
+	computed(&someStruct->field6, sizeof(someStruct->field6), computedField6);
 
 	watch(&someStruct->count, triggerCallback3);
 	watch(&someStruct->doubleField1, triggerCallback4);
@@ -232,7 +232,6 @@ int main() {
 
 	// write 2 bytes on pages boundary by one instruction into two variables
 	*(uint16_t*)(void*)((size_t)&someStruct->page1+(4096-1)) = 0x1234;
-
 
 	reactiveFree(someStruct);
 
