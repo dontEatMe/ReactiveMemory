@@ -33,7 +33,9 @@ typedef struct mmPage {
 } mmPage;
 
 typedef struct mmBlock {
-	mtx_t mutex;
+	#ifdef THREADSAFE
+		mtx_t mutex;
+	#endif
 	void* imPointer;
 	size_t size;
 	mmPage* pages; // array of mmPage
@@ -116,7 +118,9 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 	if (exception == EXCEPTION_PAGEFAULT) {
 		variable* realAddr = getVariableFromPage(pointer);
 		if (realAddr!=NULL) {
-			mtx_lock(&state.reactiveMem->mutex);
+			#ifdef THREADSAFE
+				mtx_lock(&state.reactiveMem->mutex);
+			#endif
 			if (state.registerComputed != NULL) {
 				if (!realAddr->isComputed) {
 					// check for variable already added to depends list
@@ -270,7 +274,9 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 				}
 			}
 		}
-		mtx_unlock(&state.reactiveMem->mutex);
+		#ifdef THREADSAFE
+			mtx_unlock(&state.reactiveMem->mutex);
+		#endif
 	}
 }
 
@@ -348,13 +354,17 @@ void* reactiveAlloc(size_t memSize) {
 		block->pages[i].dependents.tail = NULL;
 	}
 	block->size = memSize;
-	mtx_init(&block->mutex, mtx_plain|mtx_recursive); // TODO handle errors
+	#ifdef THREADSAFE
+		mtx_init(&block->mutex, mtx_plain|mtx_recursive); // TODO handle errors
+	#endif
 	state.reactiveMem = block;
 	return block->imPointer;
 }
 
 void reactiveFree(void* memPointer) {
-	mtx_destroy(&state.reactiveMem->mutex);
+	#ifdef THREADSAFE
+		mtx_destroy(&state.reactiveMem->mutex);
+	#endif
 	state.pagesFree(memPointer);
 	for (size_t i=0; i<state.reactiveMem->pagesCount; i++) {
 		// free dependents list
@@ -376,6 +386,11 @@ void reactiveFree(void* memPointer) {
 }
 
 void initReactivity(REACTIVITY_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
+	
+	#ifdef THREADSAFE
+		DebugBreak();
+	#endif
+	
 	state.mode = mode;
 	state.pagesAlloc = pagesAlloc;
 	state.pagesFree = pagesFree;

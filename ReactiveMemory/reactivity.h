@@ -1,15 +1,21 @@
 #ifndef REACTIVITY_H
 #define REACTIVITY_H
 
+// #define THREADSAFE
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <threads.h>
+
+#ifdef THREADSAFE
+	#include <threads.h>
+#endif
 
 // TODO memory manager
 // TODO thread safety
 // TODO MODE_NONLAZY
+
 
 typedef enum REACTIVITY_MODE {
 	MODE_LAZY = 0,
