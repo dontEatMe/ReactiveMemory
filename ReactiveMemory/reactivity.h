@@ -16,7 +16,6 @@
 // TODO thread safety
 // TODO MODE_NONLAZY
 
-
 typedef enum REACTIVITY_MODE {
 	MODE_LAZY = 0,
 	MODE_NONLAZY = 1

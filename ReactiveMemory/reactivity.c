@@ -386,11 +386,6 @@ void reactiveFree(void* memPointer) {
 }
 
 void initReactivity(REACTIVITY_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
-	
-	#ifdef THREADSAFE
-		DebugBreak();
-	#endif
-	
 	state.mode = mode;
 	state.pagesAlloc = pagesAlloc;
 	state.pagesFree = pagesFree;
