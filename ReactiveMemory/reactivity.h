@@ -1,6 +1,10 @@
 #ifndef REACTIVITY_H
 #define REACTIVITY_H
 
+#define memAlloc malloc
+#define memRealloc realloc
+#define memFree free
+#define memCopy memcpy
 // #define THREADSAFE
 
 #include <stdbool.h>
