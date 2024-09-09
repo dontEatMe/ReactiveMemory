@@ -170,73 +170,75 @@ LONG NTAPI imExeption(PEXCEPTION_POINTERS ExceptionInfo) {
 int main() {
 	printf("reactive memory app\n");
 
-	initReactivity(MODE_NONLAZY, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap);
-	void* exHandler = AddVectoredExceptionHandler(1, imExeption);
-	someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
+	if (initReactivity(MODE_NONLAZY, pagesAlloc, pagesFree, pagesProtectLock, pagesProtectUnlock, enableTrap)) {
+		void* exHandler = AddVectoredExceptionHandler(1, imExeption);
+		someStruct* someStruct = reactiveAlloc(sizeof(struct someStruct));
 	
-	ref(&someStruct->page1, sizeof(someStruct->page1));
-	ref(&someStruct->page2, sizeof(someStruct->page2));
-	ref(&someStruct->field1, sizeof(someStruct->field1));
-	computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1);
-	computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
-	computed(&someStruct->field3, sizeof(someStruct->field3), computedField3);
-	computed(&someStruct->field5, sizeof(someStruct->field5), computedField5);
-	ref(&someStruct->field4, sizeof(someStruct->field4));
-	ref(&someStruct->elem1, sizeof(someStruct->elem1));
-	ref(&someStruct->elem2, sizeof(someStruct->elem2));
-	ref(&someStruct->elem3, sizeof(someStruct->elem3));
-	someStruct->elem1.listEntry.prev = NULL;
-	someStruct->elem1.listEntry.next = NULL; // will be changed
-	someStruct->elem2.listEntry.prev = &someStruct->elem1;
-	someStruct->elem2.listEntry.next = NULL; // will be changed
-	someStruct->elem3.listEntry.prev = &someStruct->elem2;
-	someStruct->elem3.listEntry.next = NULL;
-	computed(&someStruct->count, sizeof(someStruct->count), computedCount);
-	ref(&someStruct->pages, sizeof(someStruct->pages));
-	computed(&someStruct->field6, sizeof(someStruct->field6), computedField6);
+		ref(&someStruct->page1, sizeof(someStruct->page1));
+		ref(&someStruct->page2, sizeof(someStruct->page2));
+		ref(&someStruct->field1, sizeof(someStruct->field1));
+		computed(&someStruct->doubleField1, sizeof(someStruct->doubleField1), computedDoubleField1);
+		computed(&someStruct->field2, sizeof(someStruct->field2), computedField2);
+		computed(&someStruct->field3, sizeof(someStruct->field3), computedField3);
+		computed(&someStruct->field5, sizeof(someStruct->field5), computedField5);
+		ref(&someStruct->field4, sizeof(someStruct->field4));
+		ref(&someStruct->elem1, sizeof(someStruct->elem1));
+		ref(&someStruct->elem2, sizeof(someStruct->elem2));
+		ref(&someStruct->elem3, sizeof(someStruct->elem3));
+		someStruct->elem1.listEntry.prev = NULL;
+		someStruct->elem1.listEntry.next = NULL; // will be changed
+		someStruct->elem2.listEntry.prev = &someStruct->elem1;
+		someStruct->elem2.listEntry.next = NULL; // will be changed
+		someStruct->elem3.listEntry.prev = &someStruct->elem2;
+		someStruct->elem3.listEntry.next = NULL;
+		computed(&someStruct->count, sizeof(someStruct->count), computedCount);
+		ref(&someStruct->pages, sizeof(someStruct->pages));
+		computed(&someStruct->field6, sizeof(someStruct->field6), computedField6);
 
-	watch(&someStruct->count, triggerCallback3);
-	watch(&someStruct->doubleField1, triggerCallback4);
+		watch(&someStruct->count, triggerCallback3);
+		watch(&someStruct->doubleField1, triggerCallback4);
 
-	printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
-	someStruct->field1 = 0;
-	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
+		printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
+		someStruct->field1 = 0;
+		printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
 
-	someStruct->field3 = 200;
-	printf("field3: %u\n", someStruct->field3);
+		someStruct->field3 = 200;
+		printf("field3: %u\n", someStruct->field3);
 
-	printf("field6: %hhu\n", someStruct->field6);
-	memset(&someStruct->pages, 0x01, sizeof(someStruct->pages));
-	printf("field6: %hhu\n", someStruct->field6);
+		printf("field6: %hhu\n", someStruct->field6);
+		memset(&someStruct->pages, 0x01, sizeof(someStruct->pages));
+		printf("field6: %hhu\n", someStruct->field6);
 
-	watch(&someStruct->field6, triggerCallback5);
-	// write 2 bytes on pages boundary by one instruction
-	*(uint16_t*)(void*)((size_t)&someStruct->pages+(4096-((size_t)&someStruct->pages-((size_t)(&someStruct->pages)&(~0xfff)))-1)) = 0x0202;
+		watch(&someStruct->field6, triggerCallback5);
+		// write 2 bytes on pages boundary by one instruction
+		*(uint16_t*)(void*)((size_t)&someStruct->pages+(4096-((size_t)&someStruct->pages-((size_t)(&someStruct->pages)&(~0xfff)))-1)) = 0x0202;
 
-	printf("array elements count: %zu\n", someStruct->count);
-	printf("add second element to array\n");
-	someStruct->elem1.listEntry.next =  &someStruct->elem2;
-	printf("add third element to array\n");
-	someStruct->elem2.listEntry.next =  &someStruct->elem3;
+		printf("array elements count: %zu\n", someStruct->count);
+		printf("add second element to array\n");
+		someStruct->elem1.listEntry.next =  &someStruct->elem2;
+		printf("add third element to array\n");
+		someStruct->elem2.listEntry.next =  &someStruct->elem3;
 	
-	watch(&someStruct->field3, triggerCallback1);
-	watch(&someStruct->field4, triggerCallback2);
+		watch(&someStruct->field3, triggerCallback1);
+		watch(&someStruct->field4, triggerCallback2);
 
-	someStruct->field1 = 77;
-	someStruct->field1 = 79;
-	someStruct->field4.field3 = 5;
+		someStruct->field1 = 77;
+		someStruct->field1 = 79;
+		someStruct->field4.field3 = 5;
 	
-	printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
-	printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
-	printf("array elements count: %zu\n", someStruct->count);
+		printf("field1: %u, field2.field2: %u, field3: %u\n", someStruct->field1, someStruct->field2.field2, someStruct->field3);
+		printf("doubleField1: %llu, field5: %llu\n", someStruct->doubleField1, someStruct->field5);
+		printf("array elements count: %zu\n", someStruct->count);
 
-	// write 2 bytes on pages boundary by one instruction into two variables
-	*(uint16_t*)(void*)((size_t)&someStruct->page1+(4096-1)) = 0x1234;
+		// write 2 bytes on pages boundary by one instruction into two variables
+		*(uint16_t*)(void*)((size_t)&someStruct->page1+(4096-1)) = 0x1234;
 
-	reactiveFree(someStruct);
+		reactiveFree(someStruct);
 
-	RemoveVectoredExceptionHandler(exHandler);
-	freeReactivity();
-
+		RemoveVectoredExceptionHandler(exHandler);
+		freeReactivity();
+	} else {
+		printf("ERROR: Initialization failed\n");
+	}
 	getchar();
 }

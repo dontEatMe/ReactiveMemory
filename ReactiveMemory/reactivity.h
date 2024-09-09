@@ -43,7 +43,7 @@ extern void computed(void* pointer, size_t size, void (*callback)(void* bufForRe
 extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer));
 extern void* reactiveAlloc(size_t memSize);
 extern void reactiveFree(void* memPointer);
-extern void initReactivity(REACTIVITY_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData));
+extern bool initReactivity(REACTIVITY_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData));
 extern void freeReactivity();
 extern void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWrite, void* pointer);
 

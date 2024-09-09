@@ -385,16 +385,24 @@ void reactiveFree(void* memPointer) {
 	state.reactiveMem = NULL;
 }
 
-void initReactivity(REACTIVITY_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
-	state.mode = mode;
-	state.pagesAlloc = pagesAlloc;
-	state.pagesFree = pagesFree;
-	state.pagesProtectLock = pagesProtectLock;
-	state.pagesProtectUnlock = pagesProtectUnlock;
-	state.enableTrap = enableTrap;
-	state.changedVariables = memAlloc(sizeof(variable*));
-	state.changedVariables[0] = NULL; // last element must be nullptr (free memory prevention)
-	state.changedVariablesCount = 0;
+// returns true if success and false otherwise
+bool initReactivity(REACTIVITY_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
+	bool result = true;
+	void* variablesMemBlock = memAlloc(sizeof(variable*));
+	if (variablesMemBlock == NULL) {
+		result = false;
+	} else {
+		state.mode = mode;
+		state.pagesAlloc = pagesAlloc;
+		state.pagesFree = pagesFree;
+		state.pagesProtectLock = pagesProtectLock;
+		state.pagesProtectUnlock = pagesProtectUnlock;
+		state.enableTrap = enableTrap;
+		state.changedVariables = variablesMemBlock;
+		state.changedVariables[0] = NULL; // last element must be nullptr (free memory prevention)
+		state.changedVariablesCount = 0;
+	}
+	return result;
 }
 
 void freeReactivity() {
