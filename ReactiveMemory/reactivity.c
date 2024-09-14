@@ -47,7 +47,7 @@ typedef struct engineState {
 	variable** changedVariables; // array of variable*
 	size_t changedVariablesCount;
 	mmBlock* reactiveMem;
-	REACTIVITY_MODE mode;
+	RM_MODE mode;
 	struct {
 		variable* tail;
 		variable* head;
@@ -66,7 +66,7 @@ engineState state = {
 	.changedVariables = NULL,
 	.changedVariablesCount = 0,
 	.reactiveMem = NULL,
-	.mode = MODE_LAZY,
+	.mode = RM_MODE_LAZY,
 	.variables = {
 		.tail = NULL,
 		.head = NULL
@@ -114,8 +114,8 @@ inline variable* getVariableFromPage(void* pointer) {
 }
 
 // if we run in kernel mode we can isolate reactive memory to kernel space to prevent write to it from user mode process
-void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWrite, void* pointer) {
-	if (exception == EXCEPTION_PAGEFAULT) {
+void exceptionHandler(void* userData, RM_EXCEPTION exception, bool isWrite, void* pointer) {
+	if (exception == RM_EXCEPTION_PAGEFAULT) {
 		variable* realAddr = getVariableFromPage(pointer);
 		if (realAddr!=NULL) {
 			#ifdef THREADSAFE
@@ -201,7 +201,7 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 			state.enableTrap(userData); // trap flag for get exception after memory access instruction
 		}
 	}
-	else if (exception == EXCEPTION_DEBUG) {
+	else if (exception == RM_EXCEPTION_DEBUG) {
 		state.pagesProtectLock(state.reactiveMem->imPointer, state.reactiveMem->size);
 		if (state.changedVariablesCount>0) {
 			size_t changedVariablesCount = state.changedVariablesCount;
@@ -218,7 +218,7 @@ void exceptionHandler(void* userData, REACTIVITY_EXCEPTION exception, bool isWri
 					}
 					while (compEntry!=NULL) {
 						// save old value for computed variable
-						// TODO MODE_LAZY
+						// TODO RM_MODE_LAZY
 						state.pagesProtectUnlock(compEntry->variable->value, compEntry->variable->size);
 						memCopy(compEntry->variable->oldValue, compEntry->variable->value, compEntry->variable->size);
 						state.pagesProtectLock(compEntry->variable->value, compEntry->variable->size);
@@ -385,12 +385,11 @@ void reactiveFree(void* memPointer) {
 	state.reactiveMem = NULL;
 }
 
-// returns true if success and false otherwise
-bool initReactivity(REACTIVITY_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
-	bool result = true;
+RM_STATUS initReactivity(RM_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData)) {
+	RM_STATUS result = RM_STATUS_SUCCESS;
 	void* variablesMemBlock = memAlloc(sizeof(variable*));
 	if (variablesMemBlock == NULL) {
-		result = false;
+		result = RM_STATUS_FAIL;
 	} else {
 		state.mode = mode;
 		state.pagesAlloc = pagesAlloc;
