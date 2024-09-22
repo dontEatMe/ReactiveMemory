@@ -17,7 +17,6 @@
 #endif
 
 // TODO memory manager
-// TODO thread safety
 // TODO RM_MODE_NONLAZY
 
 // RM_MODE_LAZY
