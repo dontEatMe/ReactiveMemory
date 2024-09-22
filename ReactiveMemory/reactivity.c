@@ -282,61 +282,74 @@ void exceptionHandler(void* userData, RM_EXCEPTION exception, bool isWrite, void
 
 variable* createVariable(void* pointer, size_t size) {
 	variable* var = memAlloc(sizeof(variable));
-	var->isComputed = false;
-	var->callback = NULL;
-	var->triggerCallback = NULL;
-	var->observers.head = NULL;
-	var->observers.tail = NULL;
-	var->depends.head = NULL;
-	var->depends.tail = NULL;
-	var->next = NULL;
-	var->bufValue = memAlloc(size);
-	var->oldValue = memAlloc(size);
-	var->value = pointer;
-	var->size = size;
-	if (state.variables.head == NULL) {
-		state.variables.head = var;
-		state.variables.tail = var;
-	} else {
-		state.variables.tail->next = var;
-		state.variables.tail = var;
-	}
-	// get mmPage's corresponding to variable
-	// get start page address
-	size_t pageAddress = ((size_t)pointer&(~0xfff));
-	size_t pageIndex = (pageAddress - (size_t)state.reactiveMem->imPointer)/4096;
-	// get last page address
-	size_t variableLastPageAddress = ((size_t)pointer + size)&(~0xfff);
-	size_t variablePagesCount = 1 + (variableLastPageAddress - pageAddress)/4096;
-	for (size_t i=0; i<variablePagesCount; i++) {
-		// one variable can be linked with multiple pages
-		variableEntry* dependentEntry = memAlloc(sizeof(variableEntry)); // TODO check to memAlloc return NULL
-		dependentEntry->variable = var;
-		dependentEntry->prev = NULL;
-		dependentEntry->next = NULL;
-		if (state.reactiveMem->pages[pageIndex+i].dependents.head == NULL) {
-			state.reactiveMem->pages[pageIndex+i].dependents.head = dependentEntry;
-			state.reactiveMem->pages[pageIndex+i].dependents.tail = dependentEntry;
+	if (var != NULL) {
+		var->isComputed = false;
+		var->callback = NULL;
+		var->triggerCallback = NULL;
+		var->observers.head = NULL;
+		var->observers.tail = NULL;
+		var->depends.head = NULL;
+		var->depends.tail = NULL;
+		var->next = NULL;
+		var->bufValue = memAlloc(size);
+		var->oldValue = memAlloc(size);
+		var->value = pointer;
+		var->size = size;
+		if (state.variables.head == NULL) {
+			state.variables.head = var;
+			state.variables.tail = var;
 		} else {
-			dependentEntry->prev = state.reactiveMem->pages[pageIndex].dependents.tail;
-			state.reactiveMem->pages[pageIndex+i].dependents.tail->next = dependentEntry;
-			state.reactiveMem->pages[pageIndex+i].dependents.tail = dependentEntry;
+			state.variables.tail->next = var;
+			state.variables.tail = var;
+		}
+		// get mmPage's corresponding to variable
+		// get start page address
+		size_t pageAddress = ((size_t)pointer&(~0xfff));
+		size_t pageIndex = (pageAddress - (size_t)state.reactiveMem->imPointer)/4096;
+		// get last page address
+		size_t variableLastPageAddress = ((size_t)pointer + size)&(~0xfff);
+		size_t variablePagesCount = 1 + (variableLastPageAddress - pageAddress)/4096;
+		for (size_t i=0; i<variablePagesCount; i++) {
+			// one variable can be linked with multiple pages
+			variableEntry* dependentEntry = memAlloc(sizeof(variableEntry)); // TODO check to memAlloc return NULL
+			dependentEntry->variable = var;
+			dependentEntry->prev = NULL;
+			dependentEntry->next = NULL;
+			if (state.reactiveMem->pages[pageIndex+i].dependents.head == NULL) {
+				state.reactiveMem->pages[pageIndex+i].dependents.head = dependentEntry;
+				state.reactiveMem->pages[pageIndex+i].dependents.tail = dependentEntry;
+			} else {
+				dependentEntry->prev = state.reactiveMem->pages[pageIndex].dependents.tail;
+				state.reactiveMem->pages[pageIndex+i].dependents.tail->next = dependentEntry;
+				state.reactiveMem->pages[pageIndex+i].dependents.tail = dependentEntry;
+			}
 		}
 	}
 	return var;
 }
 
-void ref(void* pointer, size_t size) {
+RM_STATUS ref(void* pointer, size_t size) {
+	RM_STATUS result = RM_STATUS_SUCCESS;
 	variable* var = createVariable(pointer, size);
+	if (var == NULL) {
+		result = RM_STATUS_FAIL;
+	}
+	return result;
 }
 
-void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer)) {
+RM_STATUS computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer)) {
+	RM_STATUS result = RM_STATUS_SUCCESS;
 	variable* var = createVariable(pointer, size);
-	var->isComputed = true;
-	var->callback = callback;
-	state.registerComputed = var;
-	var->callback(var->bufValue, state.reactiveMem->imPointer); // call computed callback for #PF and enum depends for computed and observers for refs in #PF handler routine
-	state.registerComputed = NULL;
+	if (var == NULL) {
+		result = RM_STATUS_FAIL;
+	} else {
+		var->isComputed = true;
+		var->callback = callback;
+		state.registerComputed = var;
+		var->callback(var->bufValue, state.reactiveMem->imPointer); // call computed callback for #PF and enum depends for computed and observers for refs in #PF handler routine
+		state.registerComputed = NULL;
+	}
+	return result;
 }
 
 void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer)) {

@@ -43,8 +43,8 @@ typedef enum RM_STATUS {
 	RM_STATUS_FAIL = 1
 } RM_STATUS;
 
-extern void ref(void* pointer, size_t size);
-extern void computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer));
+extern RM_STATUS ref(void* pointer, size_t size);
+extern RM_STATUS computed(void* pointer, size_t size, void (*callback)(void* bufForReturnValue, void* imPointer));
 extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer));
 extern void* reactiveAlloc(size_t memSize);
 extern void reactiveFree(void* memPointer);
