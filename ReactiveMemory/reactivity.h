@@ -47,7 +47,7 @@ extern RM_STATUS computed(void* pointer, size_t size, void (*callback)(void* buf
 extern void watch(void* pointer, void (*triggerCallback)(void* value, void* oldValue, void* imPointer));
 extern void* reactiveAlloc(size_t memSize);
 extern void reactiveFree(void* memPointer);
-extern RM_STATUS initReactivity(RM_MODE mode, void* (*pagesAlloc)(size_t size), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData));
+extern RM_STATUS initReactivity(RM_MODE mode, void* (*pagesAlloc)(size_t size, bool isGuard), void (*pagesFree)(void* pointer), void (*pagesProtectLock)(void* pointer, size_t size), void (*pagesProtectUnlock)(void* pointer, size_t size), void (*enableTrap)(void* userData));
 extern void freeReactivity();
 extern void exceptionHandler(void* userData, RM_EXCEPTION exception, bool isWrite, void* pointer);
 

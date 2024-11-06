@@ -47,8 +47,13 @@ typedef struct someStruct {
 
 // user functions
 
-void* pagesAlloc(size_t size) {
-	return VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE|PAGE_GUARD); // imaginary pages
+void* pagesAlloc(size_t size, bool isGuard) {
+	void* result;
+	if (isGuard) {
+		result = VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE|PAGE_GUARD); // imaginary pages
+	} else {
+		result = VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE); // real pages
+	}
 }
 
 void pagesFree(void* pointer) {
